@@ -28,7 +28,6 @@ static service_signature_t signatures[] = {
 };
 
 int detect_service(uint32_t ip, uint16_t port, port_info_t *info) {
-    printf("Calling detect_service for port %u\n", port);
     int sock;
     struct sockaddr_in addr;
     char buffer[MAX_BANNER_SIZE];
