@@ -9,92 +9,42 @@
 
 void print_usage(const char *prog) {
     fprintf(stdout,
-        "BlackMap v%s - Next-generation network scanner\n"
+        "BlackMap v%s - Fast Network Scanner (Compatible with Nmap)\n"
         "Usage: %s [options] <target>\n\n"
-        "Target specification:\n"
-        "  Can be a single host, IP range (127-129), CIDR (192.168.0.0/16), etc.\n\n"
-        "Host discovery:\n"
-        "  -Pn                        Treat all ports as if alive (skip ping)\n"
-        "  -PS <ports>                TCP SYN ping\n"
-        "  -PA <ports>                TCP ACK ping\n"
-        "  -PU <ports>                UDP ping\n"
-        "  -PR                        ARP ping\n"
-        "  -PP                        ICMP ping\n\n"
-        "Scan techniques:\n"
-        "  -sS                        TCP SYN scan (default)\n"
-        "  -sT                        TCP CONNECT scan\n"
-        "  -sU                        UDP scan\n"
-        "  -sY                        SCTP INIT scan\n"
-        "  -sZ                        SCTP COOKIE-ECHO scan\n"
-        "  -sA                        TCP ACK scan\n"
-        "  -sW                        TCP Window scan\n"
-        "  -sM                        TCP Maimon scan\n"
-        "  -sF                        TCP FIN scan\n"
-        "  -sN                        TCP Null scan\n"
-        "  -sX                        TCP Xmas scan\n"
-        "  -sO                        IP protocol scan\n"
-        "  -sI <zombie>               Idle/zombie scan\n\n"
-        "Port specification:\n"
-        "  -p <ports>                 Only scan specified ports (e.g., 22,80,443 or 1-65535)\n"
-        "  -p- <num>                  Scan all ports\n"
-        "  -p <service>               Scan by service name\n"
-        "  --top-ports <num>          Scan only top N ports shared\n\n"
-        "Timing and performance:\n"
-        "  -T<0-5>                    Timing template (paranoid, sneaky, polite, normal, aggressive, insane)\n"
-        "  --min-rate <num>           Send packets no slower than <num> per second\n"
-        "  --max-rate <num>           Send packets no faster than <num> per second\n"
-        "  --scan-delay <time>        Delay between probes\n"
-        "  --max-scan-delay <time>    Maximum scan delay\n"
-        "  --initial-rtt-timeout <time> Set initial timeout\n\n"
-        "Service/version detection:\n"
-        "  -sV                        Version detection\n"
-        "  --version-intensity <0-9>  Set version detection intensity\n"
-        "  --version-all              Try every version probe\n\n"
-        "OS detection:\n"
+        "BASIC OPTIONS:\n"
+        "  <target>                   IP address, hostname, IP range, or CIDR (e.g., 192.168.1.0/24)\n"
+        "  -p <ports>                 Ports to scan (default: top 1000)\n"
+        "                             Examples: -p 22,80,443 or -p 1-1000 or -p-\n"
+        "  -sV                        Probe open ports for service/version information\n"
         "  -O                         Enable OS detection\n\n"
-        "Script scanning:\n"
-        "  -sC                        Run default scripts\n"
-        "  --script <script>          Run custom script(s)\n"
-        "  --script-args <args>       Pass arguments to scripts\n"
-        "  --script-timeout <time>    Script timeout\n\n"
-        "Firewall/IDS Evasion:\n"
-        "  -f; --mtu <num>            Fragment packets (MTU value)\n"
-        "  -D <decoy1,decoy2,...>     Cloak scan with decoys\n"
-        "  -S <ip>                    Spoof source IP\n"
-        "  -e <iface>                 Use specified network interface\n"
-        "  --source-port <port>       Spoof source port\n"
-        "  --data-length <len>        Append random data to packets\n"
-        "  --data-string <string>     Append custom string to packets\n"
-        "  --data-hex <hex>           Append custom hex to packets\n"
-        "  --spoof-mac <mac>          Spoof MAC address\n"
-        "  --ttl <val>                Set IP time-to-live\n"
-        "  --randomize-hosts          Randomize target order\n\n"
-        "Output:\n"
-        "  -oN <file>                 Normal output\n"
-        "  -oX <file>                 XML output\n"
-        "  -oG <file>                 Grepable output\n"
-        "  -oJ <file>                 JSON output\n"
-        "  -oS <file>                 SQLite output\n"
-        "  -oH <file>                 HTML output\n"
-        "  -oM <file>                 Markdown output\n"
-        "  -oA <file>                 Output in all formats\n\n"
-        "Proxy and Tor:\n"
-        "  --proxy-enforced           Enforce proxy usage\n"
-        "  --dns-mode <mode>          DNS resolution mode (proxy|local|none)\n\n"
-        "I/O Engine:\n"
-        "  --io-engine <engine>       Select I/O engine (select, epoll, uring, xdp)\n\n"
-        "Misc:\n"
-        "  -v, --verbosity <level>    Increase verbosity level\n"
-        "  --debug                    Enable debug mode\n"
-        "  --log <file>               Structured logging to file\n"
-        "  -h, --help                 Show this help\n\n",
+        "HOST DISCOVERY:\n"
+        "  -Pn                        Skip ping (default, fastest)\n"
+        "  -sn                        Ping scan only\n\n"
+        "SCAN TECHNIQUES:\n"
+        "  -sS                        TCP SYN scan (requires root)\n"
+        "  -sT                        TCP CONNECT scan (default, no root required)\n\n"
+        "TIMING:\n"
+        "  -T0 to -T5                 Timing template (0=paranoid...5=insane)\n"
+        "  --max-rate <num>           Send no more than <num> packets per second\n\n"
+        "OUTPUT:\n"
+        "  -oN <file>                 Output to normal text file\n"
+        "  -oJ <file>                 Output to JSON file\n"
+        "  -v                         Increase verbosity\n\n"
+        "ADVANCED:\n"
+        "  --help, -h                 Show full help\n"
+        "  --version, -V              Show version\n"
+        "\nExamples:\n"
+        "  ./blackmap 192.168.1.1         # Scan single host\n"
+        "  ./blackmap 192.168.1.0/24      # Scan subnet\n"
+        "  ./blackmap -p 22,80,443 example.com   # Scan specific ports\n"
+        "  ./blackmap -sV nmap.org        # Detect services\n",
         BLACKMAP_VERSION, prog
     );
 }
 
 void print_version(void) {
     printf("BlackMap v%s\n", BLACKMAP_VERSION);
-    printf("Next-generation network scanner\n");
+    printf("Fast network scanner compatible with nmap\n");
 }
 
 int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
@@ -131,16 +81,16 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
         {0, 0, 0, 0}
     };
 
-    // Set defaults
+    // Set defaults - optimized for ease of use
     config->io_engine = IO_ENGINE_SELECT;
-    config->scan_type = SCAN_TYPE_SYN;
+    config->scan_type = SCAN_TYPE_CONNECT;  // Default to CONNECT (no root needed)
     config->timing = TIMING_NORMAL;
     config->num_threads = 16;
     config->timeout_ms = 5000;
     config->retries = 2;
-    config->require_root = true;
+    config->require_root = false;           // CONNECT scan doesn't need root
     config->verbosity = 0;
-    config->dns_mode = 0; // local by default
+    config->dns_mode = 0;                   // local by default
 
     while ((c = getopt_long(argc, argv, "hVvDo:p:s::S::t:T::OPn", long_opts, NULL)) != -1) {
         switch (c) {
