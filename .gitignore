@@ -1,0 +1,42 @@
+# Build artifacts
+obj/
+blackmap
+*.o
+*.a
+*.so
+
+# Rust build artifacts
+rust/target/
+rust/Cargo.lock
+
+# IDE & editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*~
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependencies
+liburing/
+libbpf/
+libbpf-include/
+
+# Test outputs
+*.log
+test_output/
+results/
+
+# Temporary files
+*.tmp
+*.bak
