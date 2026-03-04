@@ -9,8 +9,8 @@
 #include <netinet/in.h>
 
 /* Version */
-#define BLACKMAP_VERSION "1.0.0"
-#define BLACKMAP_VERSION_MAJOR 1
+#define BLACKMAP_VERSION "2.0.0"
+#define BLACKMAP_VERSION_MAJOR 2
 #define BLACKMAP_VERSION_MINOR 0
 #define BLACKMAP_VERSION_PATCH 0
 
