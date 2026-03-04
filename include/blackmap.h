@@ -9,9 +9,9 @@
 #include <netinet/in.h>
 
 /* Version */
-#define BLACKMAP_VERSION "2.0.0"
-#define BLACKMAP_VERSION_MAJOR 2
-#define BLACKMAP_VERSION_MINOR 0
+#define BLACKMAP_VERSION "3.1.0"
+#define BLACKMAP_VERSION_MAJOR 3
+#define BLACKMAP_VERSION_MINOR 1
 #define BLACKMAP_VERSION_PATCH 0
 
 /* Constants */
@@ -190,6 +190,7 @@ typedef struct {
     /* Statistics */
     bool print_stats;
     uint32_t stats_interval_ms;
+    char metrics_format[16];  /* "table" or "json" */
     
     /* Verbosity */
     int verbosity;

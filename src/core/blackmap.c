@@ -138,7 +138,7 @@ int blackmap_run(void) {
     time_t scan_start = time(NULL);
     
     /* Print header */
-    printf("\nStarting BlackMap v1.0.0 ( https://github.com/Brian-Rojo/Blackmap ) at %s", ctime(&scan_start));
+    printf("\nStarting BlackMap v%s ( https://github.com/Brian-Rojo/Blackmap ) at %s", BLACKMAP_VERSION, ctime(&scan_start));
     
     /* Allocate space for results */
     host_info_t *results = malloc(sizeof(host_info_t) * (total_hosts));
@@ -197,7 +197,15 @@ int blackmap_run(void) {
                     port_info_t info;
                     memset(&info, 0, sizeof(info));
                     detect_service(host, port, &info);
-                    strncpy(h->ports[h->num_ports - 1].service, info.service, sizeof(h->ports[h->num_ports - 1].service) - 1);
+                    /* copy detected service and version if available */
+                    if (info.service[0]) {
+                        strncpy(h->ports[h->num_ports - 1].service, info.service,
+                                sizeof(h->ports[h->num_ports - 1].service) - 1);
+                    }
+                    if (info.version[0]) {
+                        strncpy(h->ports[h->num_ports - 1].version, info.version,
+                                sizeof(h->ports[h->num_ports - 1].version) - 1);
+                    }
                 }
             } else if (state == PORT_CLOSED) {
                 total_closed++;
@@ -238,44 +246,35 @@ int blackmap_run(void) {
             }
             
             if (open_count > 0) {
-                int closed_count = h->num_ports - open_count;
-                printf("Not shown: %d closed tcp ports (conn-refused)\n", closed_count);
-                printf("PORT      STATE SERVICE\n");
+                int filtered_count = 0;
+                for (uint32_t k = 0; k < h->num_ports; k++) {
+                    if (h->ports[k].state == PORT_FILTERED) filtered_count++;
+                }
+                int closed_count = h->num_ports - open_count - filtered_count;
+                printf("Not shown: %d closed, %d filtered tcp ports\n", closed_count, filtered_count);
+                printf("PORT      STATE SERVICE/VERSION\n");
                 
                 /* Print stored open ports (no re-scan) */
                 for (uint32_t j = 0; j < h->num_ports; j++) {
                     if (h->ports[j].state == PORT_OPEN) {
                         uint16_t port = h->ports[j].port;
-                        const char *service = "unknown";
-                        
-                        /* Guess service from port */
-                        if (port == 21) service = "ftp";
-                        else if (port == 22) service = "ssh";
-                        else if (port == 23) service = "telnet";
-                        else if (port == 25) service = "smtp";
-                        else if (port == 53) service = "domain";
-                        else if (port == 80) service = "http";
-                        else if (port == 110) service = "pop3";
-                        else if (port == 143) service = "imap";
-                        else if (port == 443) service = "https";
-                        else if (port == 445) service = "microsoft-ds";
-                        else if (port == 3306) service = "mysql";
-                        else if (port == 3389) service = "ms-wbt-server";
-                        else if (port == 5432) service = "postgresql";
-                        else if (port == 5900) service = "vnc";
-                        else if (port == 6379) service = "redis";
-                        else if (port == 8080) service = "http-proxy";
-                        else if (port == 8443) service = "https-alt";
-                        else if (port == 9000) service = "cslistener";
-                        else if (port == 27017) service = "mongodb";
-                        
-                        printf("%d/tcp    open  %s\n", port, service);
+                        const char *service = h->ports[j].service[0] ? h->ports[j].service : "unknown";
+                        const char *version = h->ports[j].version;
+                        if (version && version[0]) {
+                            printf("%d/tcp    open  %s %s\n", port, service, version);
+                        } else {
+                            printf("%d/tcp    open  %s\n", port, service);
+                        }
                     }
                 }
             } else {
+                int filtered_count = 0;
+                for (uint32_t k = 0; k < h->num_ports; k++) {
+                    if (h->ports[k].state == PORT_FILTERED) filtered_count++;
+                }
                 printf("All %u scanned ports on %s are in ignored states.\n",
                        g_config->num_ports, inet_ntoa(h->ip4));
-                printf("Not shown: %u closed tcp ports (conn-refused)\n", g_config->num_ports);
+                printf("Not shown: %u closed, %d filtered tcp ports\n", g_config->num_ports, filtered_count);
             }
             printf("\n");
         }
@@ -296,6 +295,38 @@ int blackmap_run(void) {
     printf("BlackMap done at %s", ctime(&scan_start));
     printf("BlackMap done: %u IP address(es) (%u host up) scanned in %.2f seconds\n", 
            total_hosts, hosts_up, elapsed / 1000.0);
+    
+    /* Print metrics if requested */
+    if (g_config->print_stats && g_config->metrics_format[0] != '\0') {
+        if (strcmp(g_config->metrics_format, "json") == 0) {
+            printf("\n");
+            printf("{\"metrics\": {\n");
+            printf("  \"elapsed_seconds\": %.2f,\n", elapsed / 1000.0);
+            printf("  \"total_hosts\": %u,\n", total_hosts);
+            printf("  \"hosts_up\": %u,\n", hosts_up);
+            printf("  \"open_ports\": %d,\n", total_open);
+            printf("  \"closed_ports\": %d,\n", total_closed);
+            printf("  \"filtered_ports\": %d,\n", total_filtered);
+            printf("  \"total_probes\": %lu\n", (unsigned long)total_probes);
+            printf("}}\n");
+        } else {
+            /* table format (default) */
+            printf("\n");
+            printf("=== METRICS ===\n");
+            printf("Elapsed:        %.2f seconds\n", elapsed / 1000.0);
+            printf("Hosts scanned:  %u\n", total_hosts);
+            printf("Hosts up:       %u\n", hosts_up);
+            printf("Open ports:     %d\n", total_open);
+            printf("Closed ports:   %d\n", total_closed);
+            printf("Filtered ports: %d\n", total_filtered);
+            printf("Total probes:   %lu\n", (unsigned long)total_probes);
+            if (elapsed > 0) {
+                double probes_per_sec = total_probes / (elapsed / 1000.0);
+                printf("Throughput:     %.0f probes/sec\n", probes_per_sec);
+            }
+            printf("===============\n\n");
+        }
+    }
     
     free(results);
     return 0;

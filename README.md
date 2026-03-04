@@ -1,18 +1,18 @@
 # BlackMap - Advanced Network Reconnaissance Tool
 
-**BlackMap v3.0** is a professional-grade network scanner engineered from the ground up with a modern, modular architecture. Built with C for high-performance I/O and Rust for robust service analysis.
+**BlackMap v3.1** is a professional-grade network scanner engineered from the ground up with a modern, modular architecture. Version 3.1 adds detailed service version reporting and richer port-state summaries. Built with C for high-performance I/O and Rust for robust service analysis.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 ![Version](https://img.shields.io/badge/version-3.0.0--alpha-blue)
 ![Status](https://img.shields.io/badge/status-Phase%201%20Complete-brightgreen)
 
-## What's New in v3.0?
+## What's New in v3.1?
 
 ### Complete Architectural Rewrite
 
 BlackMap 3.0 is **not an incremental improvement** – it's a complete redesign from the ground up.
 
-| Feature | v2.0 | v3.0 | Impact |
+| Feature | v2.0 | v3.1 | Impact |
 |---------|------|------|--------|
 | **Architecture** | Monolithic | Modular (5 cores) | Maintainable & extensible |
 | **Network I/O** | Multiple engines | epoll-only | Simpler, ~10K concurrent |
@@ -348,7 +348,7 @@ sudo make install
 
 ## Proxy Integration
 
-| Metric | v2.0 | v3.0 |
+| Metric | v2.0 | v3.1 |
 |--------|------|------|
 | Architecture | Monolithic | Modular (5 cores) |
 | Max Concurrency | Per-engine limit | 10,000+ with epoll |
@@ -366,7 +366,7 @@ sudo make install
 
 ## License
 
-BlackMap v3.0 is released under **GNU General Public License v3.0**.
+BlackMap v3.1 is released under **GNU General Public License v3.0**.
 
 - ✓ Free for any use (personal, commercial, education)
 - ✓ Source code must be available
@@ -495,4 +495,4 @@ Built with modern C, Linux kernel features, and professional software engineerin
 
 **BlackMap 3.0: Modular. Professional. Fast.** 🚀
 
-*Phase 1 Complete | January 2025 | v3.0.0-alpha*
+*Phase 1 Complete | January 2025 | v3.1.0-alpha*

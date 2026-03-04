@@ -1,5 +1,15 @@
 # BlackMap Changelog
 
+## [3.1.0] - 2026-03-04
+
+### ✨ New in 3.1
+
+- Display detected service version strings alongside service names
+- Host summaries now show counts for closed and filtered ports
+- Global metrics include open/closed/filtered breakdowns
+- Version bumped to 3.1.0 across codebase
+- Documentation and help text updated for new options
+
 ## [2.0.0] - 2024-01-12
 
 ### ✨ Major Features

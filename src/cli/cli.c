@@ -29,6 +29,7 @@ void print_usage(const char *prog) {
         "OUTPUT:\n"
         "  -oN <file>                 Output to normal text file\n"
         "  -oJ <file>                 Output to JSON file\n"
+        "  --metrics <fmt>            Show metrics (table or json)\n"
         "  -v                         Increase verbosity\n\n"
         "ADVANCED:\n"
         "  --help, -h                 Show full help\n"
@@ -78,6 +79,7 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
         {"dns-mode", required_argument, 0, 1021},
         {"log", required_argument, 0, 1022},
         {"slow-stealth", no_argument, 0, 1023},
+        {"metrics", required_argument, 0, 1024},
         {0, 0, 0, 0}
     };
 
@@ -91,6 +93,7 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
     config->require_root = false;           // CONNECT scan doesn't need root
     config->verbosity = 0;
     config->dns_mode = 0;                   // local by default
+    strncpy(config->metrics_format, "table", sizeof(config->metrics_format)-1);
 
     while ((c = getopt_long(argc, argv, "hVvDo:p:s::S::t:T::OPn", long_opts, NULL)) != -1) {
         switch (c) {
@@ -256,6 +259,15 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
                 break;
             case 1022: // --log
                 log_init(optarg);
+                break;
+            case 1024: // --metrics
+                if (strcmp(optarg, "table") == 0 || strcmp(optarg, "json") == 0) {
+                    strncpy(config->metrics_format, optarg, sizeof(config->metrics_format)-1);
+                    config->print_stats = true;
+                } else {
+                    fprintf(stderr, "Invalid metrics format: %s (use 'table' or 'json')\n", optarg);
+                    return -1;
+                }
                 break;
             case '?':
             default:
