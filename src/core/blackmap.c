@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 #include <signal.h>
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
@@ -128,13 +129,38 @@ int blackmap_run(void) {
         }
     }
     
-    int open_ports = 0;
-    int closed_ports = 0;
-    int filtered_ports = 0;
+    int total_open = 0;
+    int total_closed = 0;
+    int total_filtered = 0;
+    int hosts_up = 0;
+    struct timeval tv_global_start, tv_global_end;
+    gettimeofday(&tv_global_start, NULL);
+    time_t scan_start = time(NULL);
+    
+    /* Print header */
+    printf("\nStarting BlackMap v1.0.0 ( https://github.com/Brian-Rojo/Blackmap ) at %s", ctime(&scan_start));
+    
+    /* Allocate space for results */
+    host_info_t *results = malloc(sizeof(host_info_t) * (total_hosts));
+    if (!results) {
+        fprintf(stderr, "[-] Memory allocation failed\n");
+        return -1;
+    }
+    memset(results, 0, sizeof(host_info_t) * total_hosts);
     
     /* Scan hosts */
     for (uint32_t host = ip_start; host <= ip_end; host++) {
+        uint32_t host_idx = host - ip_start;
+        host_info_t *h = &results[host_idx];
+        h->ip4.s_addr = host;
+        h->state = HOST_DOWN;
+        
         int host_open = 0;
+        int host_closed = 0;
+        int host_filtered = 0;
+        struct timeval tv_start, tv_end;
+        
+        gettimeofday(&tv_start, NULL);
         
         /* Scan ports */
         for (uint32_t i = 0; i < g_config->num_ports; i++) {
@@ -153,14 +179,9 @@ int blackmap_run(void) {
             
             /* Track results */
             if (state == PORT_OPEN) {
-                open_ports++;
                 host_open++;
-                
-                if (g_config->verbosity > 1 || g_config->debug) {
-                    struct in_addr addr;
-                    addr.s_addr = host;
-                    printf("[*] %s:%u - OPEN\n", inet_ntoa(addr), port);
-                }
+                h->state = HOST_UP;
+                total_open++;
                 
                 if (g_config->version_detection) {
                     port_info_t info;
@@ -168,9 +189,11 @@ int blackmap_run(void) {
                     detect_service(host, port, &info);
                 }
             } else if (state == PORT_CLOSED) {
-                closed_ports++;
+                host_closed++;
+                total_closed++;
             } else if (state == PORT_FILTERED) {
-                filtered_ports++;
+                host_filtered++;
+                total_filtered++;
             }
             
             /* Rate limiting */
@@ -180,19 +203,81 @@ int blackmap_run(void) {
             }
         }
         
-        if (host_open > 0 && g_config->verbosity > 0) {
-            struct in_addr addr;
-            addr.s_addr = host;
-            printf("[+] Host %s: %d open port(s)\n", inet_ntoa(addr), host_open);
+        gettimeofday(&tv_end, NULL);
+        h->rtt_avg_us = ((tv_end.tv_sec - tv_start.tv_sec) * 1000000) + 
+                        (tv_end.tv_usec - tv_start.tv_usec);
+        
+        if (h->state == HOST_UP) {
+            hosts_up++;
+        }
+        
+        h->num_ports = host_open;
+    }
+    
+    /* Print results in nmap-style format */
+    for (uint32_t i = 0; i < total_hosts; i++) {
+        host_info_t *h = &results[i];
+        
+        if (h->state == HOST_UP) {
+            printf("Nmap scan report for %s\n", inet_ntoa(h->ip4));
+            printf("Host is up (%.4fs latency).\n", (float)h->rtt_avg_us / 1000000.0);
+            
+            if (h->num_ports > 0) {
+                int other_states = g_config->num_ports - h->num_ports;
+                printf("Not shown: %d closed tcp ports (conn-refused)\n", other_states);
+                printf("PORT      STATE SERVICE\n");
+                
+                /* Re-scan this host to show ports */
+                for (uint32_t j = 0; j < g_config->num_ports; j++) {
+                    uint16_t port = g_config->ports[j];
+                    int state = tcp_connect_scan(h->ip4.s_addr, port, g_config->timeout_ms);
+                    
+                    if (state == PORT_OPEN) {
+                        const char *service = "unknown";
+                        
+                        /* Guess service from port */
+                        if (port == 21) service = "ftp";
+                        else if (port == 22) service = "ssh";
+                        else if (port == 23) service = "telnet";
+                        else if (port == 25) service = "smtp";
+                        else if (port == 53) service = "domain";
+                        else if (port == 80) service = "http";
+                        else if (port == 110) service = "pop3";
+                        else if (port == 143) service = "imap";
+                        else if (port == 443) service = "https";
+                        else if (port == 445) service = "microsoft-ds";
+                        else if (port == 3306) service = "mysql";
+                        else if (port == 3389) service = "ms-wbt-server";
+                        else if (port == 5432) service = "postgresql";
+                        else if (port == 5900) service = "vnc";
+                        else if (port == 6379) service = "redis";
+                        else if (port == 8080) service = "http-proxy";
+                        else if (port == 8443) service = "https-alt";
+                        else if (port == 9000) service = "cslistener";
+                        else if (port == 27017) service = "mongodb";
+                        
+                        printf("%d/tcp    open  %s\n", port, service);
+                    }
+                }
+            } else {
+                printf("All %u scanned ports on %s are in ignored states.\n",
+                       g_config->num_ports, inet_ntoa(h->ip4));
+                printf("Not shown: %u closed tcp ports (conn-refused)\n", g_config->num_ports);
+            }
+            printf("\n");
         }
     }
     
     /* Print summary */
-    printf("\n[+] Scan Complete!\n");
-    printf("[*] Open ports: %d\n", open_ports);
-    printf("[*] Closed ports: %d\n", closed_ports);
-    printf("[*] Filtered ports: %d\n", filtered_ports);
+    gettimeofday(&tv_global_end, NULL);
+    double elapsed = ((tv_global_end.tv_sec - tv_global_start.tv_sec) * 1000.0) + 
+                     ((tv_global_end.tv_usec - tv_global_start.tv_usec) / 1000.0);
     
+    printf("BlackMap done at %s", ctime(&scan_start));
+    printf("BlackMap done: %u IP address(es) (%u host up) scanned in %.2f seconds\n", 
+           total_hosts, hosts_up, elapsed / 1000.0);
+    
+    free(results);
     return 0;
 }
 
