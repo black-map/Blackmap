@@ -56,6 +56,53 @@ fn format_table(result: &ScanResult) -> String {
     output.push_str("BlackMap Scan Report\n");
     output.push_str(&format!("Scan: {} to {}\n", result.start_time, result.end_time));
     output.push_str("\n");
+    
+    // Output details per host
+    for host in &result.hosts {
+        if host.is_up {
+            output.push_str(&format!("Target: {} is UP\n", host.host));
+            if let Some(os) = &host.os {
+                output.push_str(&format!("OS Detected: {}\n", os));
+            }
+            
+            output.push_str("PORT     STATE    SERVICE   VERSION\n");
+            output.push_str("--------------------------------------------------------------------------------\n");
+            
+            for port in &host.ports {
+                if port.state == crate::scanner::PortState::Open {
+                    let service = port.service.as_deref().unwrap_or("unknown");
+                    let mut version_str = port.version.as_deref().unwrap_or("").to_string();
+                    if let Some(conf) = port.confidence {
+                        if !version_str.is_empty() {
+                            version_str = format!("{} ({}% conf)", version_str, conf);
+                        } else if conf > 0 {
+                            version_str = format!("({}% conf)", conf);
+                        }
+                    }
+                    
+                    let mut extras = String::new();
+                    if let Some(cdn) = &port.cdn {
+                        extras.push_str(&format!("[CDN: {}] ", cdn));
+                    }
+                    if let Some(waf) = &port.waf {
+                        extras.push_str(&format!("[WAF: {}] ", waf));
+                    }
+                    
+                    output.push_str(&format!(
+                        "{:<8} {:<8} {:<9} {} {}\n",
+                        port.port,
+                        "open",
+                        service,
+                        version_str,
+                        extras
+                    ));
+                }
+            }
+            output.push_str("\n");
+        }
+    }
+
+    output.push_str("--- Statistics ---\n");
     output.push_str(&format!("Hosts scanned: {}\n", result.stats.total_hosts));
     output.push_str(&format!("Hosts up: {}\n", result.stats.hosts_up));
     output.push_str(&format!("Open ports: {}\n", result.stats.open_ports));

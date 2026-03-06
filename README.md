@@ -1,25 +1,22 @@
 # BlackMap 4.0 🚀
 
 [![Rust](https://img.shields.io/badge/Language-Rust-orange)](https://www.rust-lang.org/)
-[![C](https://img.shields.io/badge/Language-C-blue)](https://en.wikipedia.org/wiki/C_(programming_language))
 [![Version](https://img.shields.io/badge/Version-4.0.0-success)](#)
+[![OS](https://img.shields.io/badge/OS-Linux%20%7C%20macOS-blue)](#)
 
-**Fast, Stealthy, Reliable, and Scalable Network Reconnaissance Framework.**
+**A Fully Asynchronous, Professional-Grade Network Reconnaissance Framework written in Rust.**
 
-BlackMap is a professional-grade reconnaissance framework built to conceptually compete with Nmap, Masscan, and RustScan while maintaining an entirely asynchronous architecture. BlackMap reaches 50,000+ concurrent sockets with zero scheduler-overhead via the Tokio runtime, while retaining deep low-level C FFI engines for stealth and raw packet crafting.
+BlackMap has evolved from a simple port scanner into a complete reconnaissance platform. Version 4.0 introduces an entirely modular architecture, combining lightning-fast async socket connections (via Tokio) with deep reconnaissance features like CDN/WAF detection, Subdomain Enumeration, and advanced service fingerprinting.
 
 ## 🌟 Key Features
 
-* **Blazing Fast**: Written in pure Rust Async (Tokio). Capable of parallel resolving and scanning of millions of targets in seconds. 
-* **Ultra Stealth**: Granular dynamic stealth profiles ranging from Level 0 (Aggressive) to Level 5 (Ghostly), modulating TTL manipulation, TCP timing, and jitter.
-* **Service Fingerprinting DB**: A massive signature-loading system utilizing JSON definitions (regex matching) capable of extracting OS strings, product versions, and protocols.
-* **Distributed Mode**: Native Master/Worker distributed cluster logic. Deploy workers across subnets!
-* **Extensible Plugins**: Load powerful `.so` natively into the execution graph without recompiling.
-* **Reliable Resolver**: Caches intelligently without ever freezing on failed hostnames via `trust-dns`.
-
-## 📸 Screenshots
-
-*(To be captured post-compilation)*
+*   **Blazing Fast Port Scanning**: Capable of parallel resolving and scanning of millions of targets in seconds utilizing connection pooling.
+*   **Subdomain Enumeration**: Built-in concurrent DNS brute-forcing to discover hidden infrastructure.
+*   **Deep Reconnaissance (CDN & WAF)**: Automatically unmasks if a target is protected by Cloudflare, Akamai, Fastly, CloudFront, Imperva, or AWS WAF.
+*   **Advanced Banner Grabbing**: Connects to open ports to extract service versions and HTTP server metadata.
+*   **Ultra Stealth**: Granular dynamic stealth profiles ranging from Level 0 (Aggressive) to Level 5 (Ghostly), with native packet rate-limiting constraints.
+*   **Multi-Format Output**: Get your results in Human-readable Tables, JSON, or CSV formats natively.
+*   **Distributed Mode**: Native Master/Worker distributed cluster logic to deploy workers across subnets!
 
 ## 📦 Installation
 
@@ -35,32 +32,42 @@ Refer to the [INSTALL.md](INSTALL.md) file for more granular info regarding comp
 
 ## ⚡ Usage Examples
 
-### Basic TCP Scan
+BlackMap 4.0 utilizes subcommands to organize its powerful features: `scan` and `subdomains`.
+
+### Port Scanning & Deep Recon
+
 ```bash
-# Scan a specific target prioritizing common ports
-blackmap -p 22,80,443,3306 scanme.nmap.org
+# Basic scan prioritizing common ports on a single target
+blackmap scan example.com -p 22,80,443
+
+# Stealthy scan, with OS Fingerprinting and Service Detection enabled, saving to JSON
+blackmap scan 192.168.1.0/24 -p- -O -V --stealth 3 -oJ results.json
+
+# Launch an insanely fast scan with a maximum packet rate limit
+blackmap scan 10.0.0.0/8 -p 80,443 --timing insane --rate-limit 10000
 ```
 
-### Stealth and Versioning Scan
+### Subdomain Enumeration
+
 ```bash
-# Aggressive Scan (0), OS Fingerprinting, Service Detection, output as JSON
-blackmap scanme.nmap.org -p- --stealth 0 -O -V -oJ scanme.json
+# Concurrently brute-force subdomains using 50 threads
+blackmap subdomains target-company.com -t 50
 ```
 
 ### Distributed Scan Architecture (Clustering)
+
 ```bash
 # Node 1: Start Master API server
-blackmap --master 0.0.0.0:8000
+blackmap scan target.com --master 0.0.0.0:8000
+
 # Node 2: Hook as worker 
-blackmap --worker 192.168.1.50:8000
+blackmap scan --worker 192.168.1.50:8000
 ```
 
-## 📚 Documentation
-Please refer to the following resources:
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System overview and Rust/C interplay.
-- [DEVELOPMENT.md](DEVELOPMENT.md) - How to setup the developer environment.
-- [ROADMAP.md](ROADMAP.md) - Our goals through v4.5+.
-- [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute PRs.
+## 🏗️ Architecture
+
+The v4.0 update migrated BlackMap into a heavily modular, Rust-first design pattern. Legacy C bindings were minimized and isolated. The framework is strictly built around `tokio` for scheduling. For more information, please see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 🤝 Roadmap & Open Source Community
-This project was redesigned entirely around the Open Source community ethos. We encourage developers to experiment with writing rust-based plugins and expanding the JSON fingerprint DB. Please check our [Roadmap](ROADMAP.md) logic!
+
+This project was redesigned entirely around the Open Source community ethos. We encourage developers to experiment with writing rust-based plugins and expanding the JSON fingerprint DB. Please check our [ROADMAP.md](ROADMAP.md) for our goals through v4.5+.

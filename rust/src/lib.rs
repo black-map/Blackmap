@@ -6,12 +6,20 @@
 #![warn(missing_docs)]
 
 // Core modules
+pub mod cli;
 pub mod config;
-pub mod scanner;
 pub mod dns;
-pub mod stealth;
-pub mod detection;
+pub mod scanner;
+pub mod service_detection;
+pub mod banner_grabbing;
+pub mod os_detection;
+pub mod cdn_detection;
+pub mod waf_detection;
+pub mod subdomain_enum;
 pub mod output;
+
+// Additional modules
+pub mod stealth;
 pub mod scheduler;
 pub mod plugin;
 pub mod error;
@@ -23,7 +31,8 @@ pub use config::ScanConfig;
 pub use scanner::{Scanner, ScanResult};
 pub use dns::DnsResolver;
 pub use stealth::StealthEngine;
-pub use detection::{ServiceDetector, OsDetector};
+pub use service_detection::ServiceDetector;
+pub use os_detection::OsDetector;
 pub use output::{OutputFormat, format_output};
 pub use error::Result;
 

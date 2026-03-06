@@ -211,6 +211,32 @@ impl DnsResolver {
         let cache = self.cache.lock().await;
         (cache.len(), cache.values().map(|e| e.addresses.len()).sum())
     }
+
+    /// Resolve specific DNS record types (A, AAAA, CNAME, MX, TXT)
+    pub async fn resolve_record(&self, target: &str, record_type: RecordType) -> Result<Vec<String>> {
+        let mut results = Vec::new();
+        if let Ok(response) = self.resolver.lookup(target, record_type).await {
+            for rdata in response.iter() {
+                match rdata {
+                    RData::A(ip) => results.push(ip.to_string()),
+                    RData::AAAA(ip) => results.push(ip.to_string()),
+                    RData::CNAME(name) => results.push(name.to_utf8()),
+                    RData::MX(mx) => results.push(format!("{} {}", mx.preference(), mx.exchange().to_utf8())),
+                    RData::TXT(txt) => {
+                        let txt_str = txt.iter().map(|b| String::from_utf8_lossy(b).into_owned()).collect::<Vec<_>>().join(" ");
+                        results.push(txt_str);
+                    },
+                    _ => results.push("Unsupported record type format".to_string()),
+                }
+            }
+        }
+        
+        if results.is_empty() {
+            Err(BlackMapError::DnsResolutionError(format!("No {:?} records found for {}", record_type, target)))
+        } else {
+            Ok(results)
+        }
+    }
 }
 
 #[cfg(test)]

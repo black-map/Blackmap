@@ -16,6 +16,10 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio::task::JoinSet;
+use crate::banner_grabbing::grab_banner;
+use crate::service_detection::ServiceDetector;
+use crate::cdn_detection::{detect_cdn, CdnProvider};
+use crate::waf_detection::{detect_waf, WafProvider};
 
 /// Scan result for a single port
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +44,12 @@ pub struct PortScan {
 
     /// Confidence score for detection (0-100)
     pub confidence: Option<u8>,
+
+    /// Detected CDN provider
+    pub cdn: Option<String>,
+
+    /// Detected WAF provider
+    pub waf: Option<String>,
 }
 
 /// Overall scan result for all hosts
@@ -216,8 +226,18 @@ impl Scanner {
                 }
 
                 let addr = SocketAddr::new(ip, port);
+                let max_retries = self.config.max_retries;
+                let do_service_detection = self.config.service_detection;
+                
+                // Rate limiting logic
+                let pps = self.config.rate_limit;
+                if pps > 0 {
+                    let delay_ns = 1_000_000_000 / pps as u64;
+                    tokio::time::sleep(Duration::from_nanos(delay_ns)).await;
+                }
+                
                 join_set.spawn(async move {
-                    Self::scan_port_static(addr, timeout_duration).await
+                    Self::scan_port_static(addr, timeout_duration, max_retries, do_service_detection).await
                 });
             }
 
@@ -269,39 +289,85 @@ impl Scanner {
         })
     }
 
-    /// Scan a single port with timeout (static version for spawn)
-    async fn scan_port_static(addr: SocketAddr, timeout_dur: Duration) -> PortScan {
+    /// Scan a single port with timeout and retries (static version for spawn)
+    async fn scan_port_static(addr: SocketAddr, timeout_dur: Duration, max_retries: u32, do_service_detection: bool) -> PortScan {
         let start = std::time::Instant::now();
+        let mut attempts = 0;
+        let mut final_state = PortState::Unknown;
+        let mut response_time = None;
 
-        let state = match timeout(timeout_dur, TcpStream::connect(addr)).await {
-            Ok(Ok(_stream)) => {
-                tracing::debug!("Port {}/{} open", addr.ip(), addr.port());
-                PortState::Open
-            }
-            Ok(Err(e)) => {
-                // Connection refused = port closed
-                if e.kind() == std::io::ErrorKind::ConnectionRefused {
-                    PortState::Closed
-                } else {
-                    PortState::Filtered
+        while attempts <= max_retries {
+            attempts += 1;
+            match timeout(timeout_dur, TcpStream::connect(addr)).await {
+                Ok(Ok(_stream)) => {
+                    tracing::debug!("Port {}/{} open", addr.ip(), addr.port());
+                    final_state = PortState::Open;
+                    response_time = Some(start.elapsed());
+                    break;
                 }
+                Ok(Err(e)) => {
+                    // Connection refused = port closed immediately, no need to retry
+                    if e.kind() == std::io::ErrorKind::ConnectionRefused {
+                        final_state = PortState::Closed;
+                        response_time = Some(start.elapsed());
+                        break;
+                    } else {
+                        // Other errors, might retry
+                        final_state = PortState::Filtered;
+                    }
+                }
+                Err(_timeout) => {
+                    // Timeout = filtered, will retry
+                    final_state = PortState::Filtered;
+                }
+            };
+            
+            // Wait slightly before retry if we are going to retry
+            if attempts <= max_retries && final_state == PortState::Filtered {
+                tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            Err(_timeout) => {
-                // Timeout = filtered
-                PortState::Filtered
-            }
-        };
+        }
 
-        let response_time = Some(start.elapsed());
+        if response_time.is_none() {
+            response_time = Some(start.elapsed());
+        }
+
+        let mut service = None;
+        let mut version = None;
+        let mut confidence = None;
+        let mut cdn_result = None;
+        let mut waf_result = None;
+        
+        // If port is open and service detection is enabled, grab banner
+        if final_state == PortState::Open && do_service_detection {
+             if let Some(banner_res) = grab_banner(&addr.ip(), addr.port()).await {
+                 let detected = ServiceDetector::detect_from_banner(&banner_res.payload);
+                 service = Some(detected.service.clone());
+                 version = detected.version;
+                 confidence = Some(detected.confidence);
+                 
+                 // Deep Recon: CDN and WAF detection for HTTP/HTTPS
+                 if port == 80 || port == 443 || detected.service.to_uppercase() == "HTTP" {
+                     if let Some(cdn) = detect_cdn(&addr.ip().to_string(), &banner_res.payload) {
+                         cdn_result = Some(format!("{:?}", cdn)); // simplified string format
+                     }
+                     if let Some(waf) = detect_waf(&banner_res.payload) {
+                         waf_result = Some(format!("{:?}", waf));
+                     }
+                 }
+             }
+        }
 
         PortScan {
             ip: addr.ip(),
             port: addr.port(),
-            state,
+            state: final_state,
             response_time,
-            service: None,
-            version: None,
-            confidence: None,
+            service,
+            version,
+            confidence,
+            cdn: cdn_result,
+            waf: waf_result,
         }
     }
 
