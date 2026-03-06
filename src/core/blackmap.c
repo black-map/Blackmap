@@ -8,11 +8,18 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 #include "blackmap.h"
+#include "blackmap3/discovery.h"
+#include "blackmap3/host_discovery.h"
+#include "blackmap3/scheduler.h"
+#include "blackmap3/network.h"
 #include "engines.h"
 #include "service.h"
 #include "proxy.h"
 
 static io_engine_t *current_engine = NULL;
+
+/* global network engine pointer (declared in blackmap.h) */
+network_engine_t *g_engine = NULL;
 
 int blackmap_init(void) {
     if (!g_config) {
@@ -58,6 +65,14 @@ int blackmap_init(void) {
         fprintf(stderr, "Error: Failed to initialize I/O engine\n");
         return -1;
     }
+    /* expose engine pointer for other subsystems */
+    g_engine = network_engine_init(g_config->num_threads,
+                                   g_config->max_rate > 0 ? g_config->max_rate : 1024,
+                                   g_config->timeout_ms);
+    if (!g_engine) {
+        fprintf(stderr, "Error: Could not initialize network engine\n");
+        return -1;
+    }
     
     /* Enforce proxy mode if needed */
     enforce_proxy_mode();    
@@ -77,6 +92,13 @@ int blackmap_init(void) {
     
     if (g_config->verbosity > 0) {
         printf("[+] BlackMap v%s initialized\n", BLACKMAP_VERSION);
+        if (g_config->verbosity > 1) {
+            printf("[DEBUG] Scan configuration:\n");
+            printf("[DEBUG]   - IO Engine: %s\n", current_engine->name);
+            printf("[DEBUG]   - Timeout: %ums\n", g_config->timeout_ms);
+            printf("[DEBUG]   - Max rate: %u pps\n", g_config->max_rate);
+            printf("[DEBUG]   - Timing level: %d\n", g_config->timing);
+        }
     }
     
     return 0;
@@ -94,22 +116,127 @@ int blackmap_run(void) {
         printf("[*] Scan type: %d\n", g_config->scan_type);
         printf("[*] Ports to scan: %u\n", g_config->num_ports);
         printf("[*] Timeout: %ums\n", g_config->timeout_ms);
+        if (g_config->verbosity > 1) {
+            printf("[DEBUG] Host discovery: %s\n", g_config->skip_ping ? "disabled (-Pn)" : "enabled");
+        }
     }
     
-    /* Parse targets */
-    uint32_t ip_start, ip_end;
-    if (parse_ipv4_target(g_config->targets_str, &ip_start, &ip_end) != 0) {
-        fprintf(stderr, "[-] Failed to parse targets\n");
+    /* Build target list (expanding ranges/DNS names).  The function handles
+       IPv4 and will return one entry per resolved address. */
+    host_entry_t *hosts = NULL;
+    uint32_t num_hosts = 0;
+    
+    if (g_config->verbosity > 1) {
+        printf("[DEBUG] Starting target resolution phase\n");
+    }
+    
+    if (build_host_list(g_config->targets_str, &hosts, &num_hosts) != 0 || num_hosts == 0) {
+        fprintf(stderr, "[-] Failed to parse or resolve targets\n");
         return -1;
     }
     
-    uint32_t total_hosts = ip_end - ip_start + 1;
-    uint32_t total_ports = g_config->num_ports ? g_config->num_ports : 1000;
+    if (g_config->verbosity > 0) {
+        printf("[+] Resolved targets into %u host(s)\n", num_hosts);
+    }
+
+    /* Ensure we have a port list; parse default if user did not specify -p */
+    if (g_config->num_ports == 0) {
+        if (parse_ports(NULL) != 0) {
+            fprintf(stderr, "[-] Failed to set default port list\n");
+            host_list_free(hosts, num_hosts);
+            return -1;
+        }
+    }
+
+    uint32_t total_hosts = num_hosts;
+    uint32_t total_ports = g_config->num_ports;
     uint64_t total_probes = (uint64_t)total_hosts * total_ports;
-    
+
     if (g_config->verbosity > 0) {
         printf("[*] Hosts to scan: %u\n", total_hosts);
         printf("[*] Total probes: %lu\n", (unsigned long)total_probes);
+    }
+
+    /* Perform host discovery stage using the new discovery module */
+    if (g_config->verbosity > 0) {
+        printf("[*] Starting host discovery phase\n");
+    }
+    
+    int discovered_up = 0;
+    if (g_config->skip_ping) {
+        /* -Pn: Skip discovery, treat all as up */
+        if (g_config->verbosity > 0) {
+            printf("[+] -Pn specified: treating all %u host(s) as alive (skipping discovery)\n", num_hosts);
+        }
+        for (uint32_t i = 0; i < num_hosts; i++) {
+            hosts[i].state = HOST_UP;
+            discovered_up++;
+        }
+    } else {
+        /* Use the new professional host discovery system */
+        discovery_config_t *disc_config = discovery_config_create();
+        if (disc_config) {
+            disc_config->skip_discovery = false;
+            disc_config->timeout_ms = g_config->timeout_ms;
+            disc_config->verbose = (g_config->verbosity > 1);  /* Verbose if -vv or higher */
+            
+            discovery_stats_t stats;
+            discovery_result_t *disc_results = calloc(num_hosts, sizeof(discovery_result_t));
+            
+            /* Create temporary array of sockaddr_storage from host_entry_t */
+            struct sockaddr_storage *targets = calloc(num_hosts, sizeof(struct sockaddr_storage));
+            if (disc_results && targets) {
+                for (uint32_t i = 0; i < num_hosts; i++) {
+                    targets[i] = hosts[i].addr;
+                }
+                
+                if (g_config->verbosity > 1) {
+                    printf("[DEBUG] Sending discovery probes to %u host(s)...\n", num_hosts);
+                }
+                
+                discovered_up = discovery_probe_hosts(disc_config, targets,
+                    num_hosts, disc_results, &stats);
+                
+                if (g_config->verbosity > 0) {
+                    printf("[*] Host discovery complete: %u host(s) up (took %ums)\n",
+                           discovered_up, stats.duration_ms);
+                    if (g_config->verbosity > 1) {
+                        printf("[DEBUG] Discovery stats: %u probes sent, %u successful, %u failed\n",
+                               stats.total_probes_sent, stats.successful_probes, stats.failed_probes);
+                    }
+                }
+                
+                /* Update host states based on discovery results */
+                for (uint32_t i = 0; i < num_hosts; i++) {
+                    if (disc_results[i].is_up) {
+                        hosts[i].state = HOST_UP;
+                        if (g_config->verbosity > 1) {
+                            printf("[DEBUG] Host %s marked UP (method: %d, RTT: %ums)\n",
+                                   hosts[i].addr_str, disc_results[i].probe_method_used,
+                                   disc_results[i].rtt_ms);
+                        }
+                    } else {
+                        hosts[i].state = HOST_DOWN;
+                        if (g_config->verbosity > 1) {
+                            printf("[DEBUG] Host %s marked DOWN (no response to probes)\n",
+                                   hosts[i].addr_str);
+                        }
+                    }
+                }
+                
+                free(targets);
+                free(disc_results);
+            } else {
+                fprintf(stderr, "[-] Memory allocation failed for discovery\n");
+                if (targets) free(targets);
+                if (disc_results) free(disc_results);
+                discovered_up = 0;
+            }
+            discovery_config_free(disc_config);
+        } else {
+            fprintf(stderr, "[-] Failed to create discovery configuration\n");
+            discovered_up = 0;
+        }
     }
     
     /* Check if we need TCP CONNECT instead of SYN */
@@ -158,83 +285,299 @@ int blackmap_run(void) {
         memset(results[h].ports, 0, sizeof(port_info_t) * g_config->num_ports);
     }
     
-    /* Scan hosts */
-    for (uint32_t host = ip_start; host <= ip_end; host++) {
-        uint32_t host_idx = host - ip_start;
-        host_info_t *h = &results[host_idx];
-        h->ip4.s_addr = host;
-        h->state = HOST_DOWN;
-        
-        struct timeval tv_start, tv_end;
-        gettimeofday(&tv_start, NULL);
-        
-        /* Scan ports */
-        for (uint32_t i = 0; i < g_config->num_ports; i++) {
-            uint16_t port = g_config->ports[i];
-            int state = PORT_UNKNOWN;
-            
-            /* Perform scan based on type */
-            if (g_config->scan_type == SCAN_TYPE_CONNECT) {
-                state = tcp_connect_scan(host, port, g_config->timeout_ms);
-            } else if (g_config->scan_type == SCAN_TYPE_SYN) {
-                state = tcp_syn_scan_stub(host, port);
-            } else {
-                /* Default to CONNECT */
-                state = tcp_connect_scan(host, port, g_config->timeout_ms);
-            }
-            
-            /* Store port result */
-            h->ports[h->num_ports].port = port;
-            h->ports[h->num_ports].state = state;
-            h->num_ports++;
-            
-            /* Track results */
-            if (state == PORT_OPEN) {
-                h->state = HOST_UP;
-                total_open++;
-                
-                if (g_config->version_detection) {
-                    port_info_t info;
-                    memset(&info, 0, sizeof(info));
-                    detect_service(host, port, &info);
-                    /* copy detected service and version if available */
-                    if (info.service[0]) {
-                        strncpy(h->ports[h->num_ports - 1].service, info.service,
-                                sizeof(h->ports[h->num_ports - 1].service) - 1);
-                    }
-                    if (info.version[0]) {
-                        strncpy(h->ports[h->num_ports - 1].version, info.version,
-                                sizeof(h->ports[h->num_ports - 1].version) - 1);
-                    }
-                }
-            } else if (state == PORT_CLOSED) {
-                total_closed++;
-            } else if (state == PORT_FILTERED) {
-                total_filtered++;
-            }
-            
-            /* Rate limiting */
-            if (g_config->max_rate > 0) {
-                uint32_t delay_us = 1000000 / g_config->max_rate;
-                usleep(delay_us);
-            }
-        }
-        
-        gettimeofday(&tv_end, NULL);
-        h->rtt_avg_us = ((tv_end.tv_sec - tv_start.tv_sec) * 1000000) + 
-                        (tv_end.tv_usec - tv_start.tv_usec);
-        
-        if (h->state == HOST_UP) {
-            hosts_up++;
-        }
+    /* Initialize concurrent scanning components */
+    scheduler_t *sched = scheduler_create(
+        g_config->num_threads,  // max_concurrency_global
+        g_config->num_threads > 4 ? g_config->num_threads / 4 : 1,  // max_concurrency_per_host (at least 1)
+        SCHEDULE_MODE_COMMON  // prioritize common ports
+    );
+    if (!sched) {
+        fprintf(stderr, "[-] Failed to create scheduler\n");
+        return -1;
     }
     
-    /* Print results - only hosts that are UP */
+    if (g_config->verbosity > 0) {
+        printf("[+] Scheduler initialized with %u max concurrency\n", g_config->num_threads);
+    }
+
+    network_engine_t *net_engine = network_engine_init(
+        g_config->num_threads,  // max_concurrency_global
+        g_config->num_threads > 4 ? g_config->num_threads / 4 : 1,  // max_concurrency_per_host
+        g_config->timeout_ms  // default_timeout_ms
+    );
+    if (!net_engine) {
+        fprintf(stderr, "[-] Failed to create network engine\n");
+        scheduler_free(sched);
+        return -1;
+    }
+    
+    if (g_config->verbosity > 0) {
+        printf("[+] Network engine initialized with %u max concurrency\n", g_config->num_threads);
+    }
+
+    /* Create scan plan */
+    scan_plan_t plan;
+    memset(&plan, 0, sizeof(plan));
+    plan.num_hosts = num_hosts;
+    plan.num_total_tasks = num_hosts * g_config->num_ports;
+    plan.default_probe = (g_config->scan_type == SCAN_TYPE_CONNECT) ? PROBE_TCP_CON : PROBE_TCP_SYN;
+
+    // Allocate arrays
+    plan.ports = malloc(sizeof(uint32_t*) * num_hosts);
+    plan.port_counts = malloc(sizeof(uint16_t) * num_hosts);
+    plan.target_ips = malloc(sizeof(char*) * num_hosts);
+
+    if (!plan.ports || !plan.port_counts || !plan.target_ips) {
+        fprintf(stderr, "[-] Memory allocation failed for scan plan\n");
+        scheduler_free(sched);
+        network_engine_cleanup(net_engine);
+        return -1;
+    }
+
+    // Populate scan plan
+    for (uint32_t hidx = 0; hidx < num_hosts; hidx++) {
+        host_entry_t *entry = &hosts[hidx];
+        host_info_t *h = &results[hidx];
+
+        // Copy address/hostname for reporting
+        h->state = entry->state == HOST_UP ? HOST_UP : HOST_DOWN;
+        if (entry->addr.ss_family == AF_INET) {
+            h->ip4 = ((struct sockaddr_in*)&entry->addr)->sin_addr;
+            h->is_ipv6 = false;
+        } else if (entry->addr.ss_family == AF_INET6) {
+            h->ip6 = ((struct sockaddr_in6*)&entry->addr)->sin6_addr;
+            h->is_ipv6 = true;
+        }
+        strncpy(h->hostname, entry->hostname, sizeof(h->hostname)-1);
+
+        // Allocate and copy ports for this host
+        plan.ports[hidx] = malloc(sizeof(uint32_t) * g_config->num_ports);
+        plan.target_ips[hidx] = malloc(INET_ADDRSTRLEN);
+        if (!plan.ports[hidx] || !plan.target_ips[hidx]) {
+            fprintf(stderr, "[-] Memory allocation failed for host %u\n", hidx);
+            // Cleanup would be complex here, let main cleanup handle it
+            break;
+        }
+
+        // Convert IP to string
+        if (!h->is_ipv6) {
+            inet_ntop(AF_INET, &h->ip4, plan.target_ips[hidx], INET_ADDRSTRLEN);
+        } else {
+            strncpy(plan.target_ips[hidx], "::1", INET_ADDRSTRLEN-1); // IPv6 placeholder
+        }
+
+        // Copy ports
+        plan.port_counts[hidx] = g_config->num_ports;
+        for (uint32_t p = 0; p < g_config->num_ports; p++) {
+            plan.ports[hidx][p] = g_config->ports[p];
+        }
+    }
+
+    /* Enqueue all tasks */
+    if (scheduler_enqueue_plan(sched, &plan) < 0) {
+        fprintf(stderr, "[-] Failed to enqueue scan plan\n");
+        goto cleanup;
+    }
+    
+    if (g_config->verbosity > 0) {
+        printf("[+] Enqueued %u tasks for scanning\n", plan.num_total_tasks);
+    }
+
+    /* Main concurrent scanning loop */
+    struct timeval concurrent_scan_start, concurrent_scan_end;
+    gettimeofday(&concurrent_scan_start, NULL);
+
+    uint32_t total_submitted = 0;
+    uint32_t total_processed = 0;
+
+    while (!scheduler_is_finished(sched)) {
+        /* Submit new connections up to concurrency limit */
+        while (total_submitted < plan.num_total_tasks) {
+            task_t *task = scheduler_next_task(sched);
+            if (!task) break; // No more tasks available or concurrency limit reached
+
+            // Create connection for this task
+            if (g_config->verbosity > 1) {
+                printf("[*] Creating connection for host %u (%s) port %u\n", 
+                       task->host_index, plan.target_ips[task->host_index], task->port);
+            }
+            connection_t *conn = connection_create(
+                plan.target_ips[task->host_index],
+                task->port,
+                g_config->timeout_ms
+            );
+            if (!conn) {
+                fprintf(stderr, "[-] Failed to create connection for %s:%u\n",
+                        plan.target_ips[task->host_index], task->port);
+                continue;
+            }
+
+            if (g_config->verbosity > 1) {
+                printf("[*] Created connection for %s:%u\n", plan.target_ips[task->host_index], task->port);
+            }
+
+            // Set probe type and host context
+            conn->probe_type = task->probe_type;
+            conn->host_context = (void*)(uintptr_t)task->host_index;
+
+            // Queue connection
+            if (network_queue_connection(net_engine, conn) < 0) {
+                fprintf(stderr, "[-] Failed to queue connection for %s:%u\n",
+                        plan.target_ips[task->host_index], task->port);
+                connection_free(conn);
+                continue;
+            }
+            
+            if (g_config->verbosity > 1) {
+                printf("[*] Queued connection for %s:%u\n", plan.target_ips[task->host_index], task->port);
+            }
+
+            total_submitted++;
+        }
+
+        if (g_config->verbosity > 1) {
+            printf("[*] Submitted %u/%u tasks\n", total_submitted, plan.num_total_tasks);
+        }
+
+        /* Process pending connections */
+        int process_result = network_process_batch(net_engine, 10); // 10ms timeout
+        if (process_result < 0) {
+            fprintf(stderr, "[-] Network processing error: %d\n", process_result);
+            break;
+        }
+        if (g_config->verbosity > 1 && process_result > 0) {
+            printf("[*] Processed %d events\n", process_result);
+        }
+
+        /* Collect finished connections */
+        connection_t **finished = NULL;
+        uint32_t finished_count = 0;
+        if (network_collect_finished(net_engine, &finished, &finished_count) == 0) {
+            if (g_config->verbosity > 1 && finished_count > 0) {
+                printf("[*] Collected %u finished connections\n", finished_count);
+            }
+            for (uint32_t i = 0; i < finished_count; i++) {
+                connection_t *conn = finished[i];
+                uint32_t host_idx = (uintptr_t)conn->host_context;
+                host_info_t *h = &results[host_idx];
+
+                // Map connection result to port state
+                port_state_t state = PORT_UNKNOWN;
+                conn_state_t conn_state = connection_get_state(conn);
+
+                switch (conn_state) {
+                    case CONN_STATE_OPEN:
+                        state = PORT_OPEN;
+                        break;
+                    case CONN_STATE_CLOSED:
+                    case CONN_STATE_RESET:
+                        state = PORT_CLOSED;
+                        break;
+                    case CONN_STATE_TIMEOUT:
+                        state = PORT_FILTERED;
+                        break;
+                    case CONN_STATE_ERROR:
+                    default:
+                        state = PORT_FILTERED;
+                        break;
+                }
+
+                // Store result
+                h->ports[h->num_ports].port = conn->port;
+                h->ports[h->num_ports].state = state;
+                h->num_ports++;
+
+                if (state == PORT_OPEN) {
+                    h->state = HOST_UP;
+                    total_open++;
+                    if (g_config->version_detection) {
+                        port_info_t info;
+                        memset(&info, 0, sizeof(info));
+                        if (!h->is_ipv6) {
+                            uint32_t ip = ntohl(h->ip4.s_addr);
+                            detect_service(ip, conn->port, &info);
+                        }
+                        if (info.service[0]) {
+                            strncpy(h->ports[h->num_ports - 1].service, info.service,
+                                    sizeof(h->ports[h->num_ports - 1].service) - 1);
+                        }
+                        if (info.version[0]) {
+                            strncpy(h->ports[h->num_ports - 1].version, info.version,
+                                    sizeof(h->ports[h->num_ports - 1].version) - 1);
+                        }
+                    }
+                } else if (state == PORT_CLOSED) {
+                    total_closed++;
+                } else if (state == PORT_FILTERED) {
+                    total_filtered++;
+                }
+
+                // Mark task complete
+                scheduler_mark_complete(sched, host_idx);
+                total_processed++;
+
+                // Free connection
+                connection_free(conn);
+            }
+        }
+
+        /* Rate limiting */
+        if (g_config->max_rate > 0) {
+            uint32_t delay_us = 1000000 / g_config->max_rate;
+            usleep(delay_us);
+        }
+    }
+
+    gettimeofday(&concurrent_scan_end, NULL);
+    uint64_t scan_time_us = ((concurrent_scan_end.tv_sec - concurrent_scan_start.tv_sec) * 1000000ULL) +
+                            (concurrent_scan_end.tv_usec - concurrent_scan_start.tv_usec);
+
+    if (g_config->verbosity > 0) {
+        printf("[+] Scan completed in %.3fs (%u ports, %.1f ports/sec)\n",
+               scan_time_us / 1000000.0, total_processed,
+               total_processed / (scan_time_us / 1000000.0));
+    }
+
+cleanup:
+    /* Cleanup scan plan */
+    if (plan.ports) {
+        for (uint32_t i = 0; i < num_hosts; i++) {
+            free(plan.ports[i]);
+        }
+        free(plan.ports);
+    }
+    if (plan.target_ips) {
+        for (uint32_t i = 0; i < num_hosts; i++) {
+            free(plan.target_ips[i]);
+        }
+        free(plan.target_ips);
+    }
+    free(plan.port_counts);
+
+    /* Cleanup components */
+    scheduler_free(sched);
+    network_engine_cleanup(net_engine);
+    
+    /* Print results - show host discovery state */
     for (uint32_t i = 0; i < total_hosts; i++) {
         host_info_t *h = &results[i];
+        char ip_str[INET_ADDRSTRLEN];
+        
+        if (!h->is_ipv6) {
+            inet_ntop(AF_INET, &h->ip4, ip_str, sizeof(ip_str));
+        } else {
+            strncpy(ip_str, "::1", sizeof(ip_str) - 1);  /* Placeholder for IPv6 */
+        }
+        
+        if (g_config->verbosity > 1) {
+            printf("[*] Host %s: state=%s\n", ip_str, h->state == HOST_UP ? "UP" : "DOWN");
+        }
         
         if (h->state == HOST_UP) {
-            printf("Nmap scan report for %s\n", inet_ntoa(h->ip4));
+            printf("Nmap scan report for %s\n", ip_str);
+            if (h->hostname[0] && strcmp(h->hostname, ip_str) != 0) {
+                printf("Hostname: %s\n", h->hostname);
+            }
             printf("Host is up (%.4fs latency).\n", (float)h->rtt_avg_us / 1000000.0);
             
             /* Count open and closed ports */
@@ -335,6 +678,10 @@ int blackmap_run(void) {
 void blackmap_cleanup(void) {
     if (current_engine && current_engine->cleanup) {
         current_engine->cleanup();
+    }
+    if (g_engine) {
+        network_engine_cleanup(g_engine);
+        g_engine = NULL;
     }
     
     if (g_config) {

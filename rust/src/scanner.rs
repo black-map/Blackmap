@@ -1,0 +1,337 @@
+//! High-performance async scanning engine
+//!
+//! This module handles all scanning operations:
+//! - TCP CONNECT scans
+//! - TCP SYN scans (via C FFI)
+//! - UDP scans
+//! - Parallel port scanning
+//! - Host discovery
+
+use crate::config::{ScanConfig, ScanType};
+use crate::dns::DnsResolver;
+use crate::error::Result;
+use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::time::timeout;
+use tokio::task::JoinSet;
+
+/// Scan result for a single port
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortScan {
+    /// Target IP address
+    pub ip: IpAddr,
+
+    /// Port number
+    pub port: u16,
+
+    /// Port state
+    pub state: PortState,
+
+    /// Response time
+    pub response_time: Option<Duration>,
+
+    /// Service name (if detected)
+    pub service: Option<String>,
+
+    /// Service version (if detected)
+    pub version: Option<String>,
+
+    /// Confidence score for detection (0-100)
+    pub confidence: Option<u8>,
+}
+
+/// Overall scan result for all hosts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    /// Scanned hosts with their results
+    pub hosts: Vec<HostScan>,
+
+    /// Scan statistics
+    pub stats: ScanStats,
+
+    /// Scan start time
+    pub start_time: chrono::DateTime<chrono::Utc>,
+
+    /// Scan end time
+    pub end_time: chrono::DateTime<chrono::Utc>,
+}
+
+/// Individual host scan result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostScan {
+    /// Host IP or hostname
+    pub host: String,
+
+    /// Host is up
+    pub is_up: bool,
+
+    /// Open ports
+    pub ports: Vec<PortScan>,
+
+    /// Operating system (if detected)
+    pub os: Option<String>,
+}
+
+/// Scan statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanStats {
+    /// Total hosts scanned
+    pub total_hosts: usize,
+
+    /// Hosts found up
+    pub hosts_up: usize,
+
+    /// Total ports scanned
+    pub total_ports: usize,
+
+    /// Open ports found
+    pub open_ports: usize,
+
+    /// Closed ports found
+    pub closed_ports: usize,
+
+    /// Filtered ports found
+    pub filtered_ports: usize,
+}
+
+/// Port state
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PortState {
+    /// Port is open and accepting connections
+    Open,
+
+    /// Port is closed, connection refused
+    Closed,
+
+    /// Port is filtered, no response
+    Filtered,
+
+    /// Unknown state
+    Unknown,
+}
+
+/// High-performance async scanner
+pub struct Scanner {
+    config: ScanConfig,
+}
+
+impl Scanner {
+    /// Create a new scanner with configuration
+    pub fn new(config: ScanConfig) -> Self {
+        Self { config }
+    }
+
+    /// Start scanning
+    pub async fn scan(&self) -> Result<ScanResult> {
+        let start_time = chrono::Utc::now();
+        let start = std::time::Instant::now();
+
+        // Initialize DNS resolver
+        let resolver = DnsResolver::with_defaults().await?;
+
+        // Resolve all targets to IP addresses
+        let mut all_ips = Vec::new();
+        for target in &self.config.targets {
+            match resolver.resolve(target).await {
+                Ok(resolved) => {
+                    tracing::info!(
+                        "Resolved {} to {} address(es)",
+                        target,
+                        resolved.addresses.len()
+                    );
+                    all_ips.extend(resolved.addresses);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to resolve {}: {}", target, e);
+                }
+            }
+        }
+
+        if all_ips.is_empty() {
+            tracing::warn!("No valid targets after resolution");
+            return Ok(ScanResult {
+                hosts: Vec::new(),
+                stats: ScanStats {
+                    total_hosts: 0,
+                    hosts_up: 0,
+                    total_ports: 0,
+                    open_ports: 0,
+                    closed_ports: 0,
+                    filtered_ports: 0,
+                },
+                start_time,
+                end_time: chrono::Utc::now(),
+            });
+        }
+
+        let total_hosts = all_ips.len();
+        let total_ports = self.config.ports.len() * total_hosts;
+
+        tracing::info!(
+            "Starting scan: {} hosts, {} ports each, {} threads",
+            total_hosts,
+            self.config.ports.len(),
+            self.config.concurrency
+        );
+
+        // Perform concurrent scans
+        let mut host_scans = Vec::new();
+        let mut total_open = 0;
+        let mut total_closed = 0;
+        let mut total_filtered = 0;
+        let mut hosts_with_open_ports = 0;
+
+        for ip in all_ips {
+            let mut host_result = HostScan {
+                host: ip.to_string(),
+                is_up: false,
+                ports: Vec::new(),
+                os: None,
+            };
+
+            // Scan ports for this host
+            let mut join_set: JoinSet<PortScan> = JoinSet::new();
+            let timeout_duration = self.config.timeout;
+            let concurrency = self.config.concurrency as usize;
+
+            for (idx, &port) in self.config.ports.iter().enumerate() {
+                // Manual concurrency limiting
+                if idx % concurrency == 0 && idx > 0 {
+                    // Let some tasks complete before spawning more
+                    while join_set.len() > concurrency / 2 {
+                        if let Some(result) = join_set.join_next().await {
+                            if let Ok(port_result) = result {
+                                match port_result.state {
+                                    PortState::Open => total_open += 1,
+                                    PortState::Closed => total_closed += 1,
+                                    PortState::Filtered => total_filtered += 1,
+                                    PortState::Unknown => {}
+                                }
+                                host_result.ports.push(port_result);
+                            }
+                        }
+                    }
+                }
+
+                let addr = SocketAddr::new(ip, port);
+                join_set.spawn(async move {
+                    Self::scan_port_static(addr, timeout_duration).await
+                });
+            }
+
+            // Collect remaining results
+            while let Some(result) = join_set.join_next().await {
+                if let Ok(port_result) = result {
+                    match port_result.state {
+                        PortState::Open => total_open += 1,
+                        PortState::Closed => total_closed += 1,
+                        PortState::Filtered => total_filtered += 1,
+                        PortState::Unknown => {}
+                    }
+                    host_result.ports.push(port_result);
+                }
+            }
+
+            // Check if host is up
+            host_result.is_up = host_result.ports.iter().any(|p| p.state == PortState::Open);
+            if host_result.is_up {
+                hosts_with_open_ports += 1;
+            }
+
+            host_scans.push(host_result);
+        }
+
+        let elapsed = start.elapsed();
+        tracing::info!(
+            "Scan complete in {:.2}s - {} open, {} closed, {} filtered",
+            elapsed.as_secs_f64(),
+            total_open,
+            total_closed,
+            total_filtered
+        );
+
+        let end_time = chrono::Utc::now();
+
+        Ok(ScanResult {
+            hosts: host_scans,
+            stats: ScanStats {
+                total_hosts,
+                hosts_up: hosts_with_open_ports,
+                total_ports,
+                open_ports: total_open,
+                closed_ports: total_closed,
+                filtered_ports: total_filtered,
+            },
+            start_time,
+            end_time,
+        })
+    }
+
+    /// Scan a single port with timeout (static version for spawn)
+    async fn scan_port_static(addr: SocketAddr, timeout_dur: Duration) -> PortScan {
+        let start = std::time::Instant::now();
+
+        let state = match timeout(timeout_dur, TcpStream::connect(addr)).await {
+            Ok(Ok(_stream)) => {
+                tracing::debug!("Port {}/{} open", addr.ip(), addr.port());
+                PortState::Open
+            }
+            Ok(Err(e)) => {
+                // Connection refused = port closed
+                if e.kind() == std::io::ErrorKind::ConnectionRefused {
+                    PortState::Closed
+                } else {
+                    PortState::Filtered
+                }
+            }
+            Err(_timeout) => {
+                // Timeout = filtered
+                PortState::Filtered
+            }
+        };
+
+        let response_time = Some(start.elapsed());
+
+        PortScan {
+            ip: addr.ip(),
+            port: addr.port(),
+            state,
+            response_time,
+            service: None,
+            version: None,
+            confidence: None,
+        }
+    }
+
+    /// Scan a single port with timeout
+    async fn scan_port(&self, addr: SocketAddr, timeout_dur: Duration) -> Result<PortState> {
+        let start = std::time::Instant::now();
+
+        match timeout(timeout_dur, TcpStream::connect(addr)).await {
+            Ok(Ok(_)) => {
+                let elapsed = start.elapsed();
+                tracing::debug!("Port {}/{} open ({}ms)", addr.ip(), addr.port(), elapsed.as_millis());
+                Ok(PortState::Open)
+            }
+            Ok(Err(_)) => {
+                Ok(PortState::Closed)
+            }
+            Err(_) => {
+                Ok(PortState::Filtered)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_port_state() {
+        assert_eq!(PortState::Open, PortState::Open);
+        assert_ne!(PortState::Open, PortState::Closed);
+    }
+}

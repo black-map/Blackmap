@@ -103,15 +103,33 @@ int parse_ports(const char *port_spec) {
     char buf[4096];
     strncpy(buf, port_spec, sizeof(buf) - 1);
     
-    /* Count ports first */
+    /* Count ports first with range expansion to determine needed array size */
     int count = 0;
     char tmp[4096];
     strncpy(tmp, buf, sizeof(tmp) - 1);
     
-    char *token = strtok(tmp, ",");
-    while (token) {
-        count++;
-        token = strtok(NULL, ",");
+    char *tok = strtok(tmp, ",");
+    while (tok) {
+        /* trim whitespace */
+        while (isspace(*tok)) tok++;
+        if (*tok == '\0') {
+            tok = strtok(NULL, ",");
+            continue;
+        }
+        char *dash = strchr(tok, '-');
+        if (dash && isdigit(*(dash - 1)) && isdigit(*(dash + 1))) {
+            int start = atoi(tok);
+            int end = atoi(dash + 1);
+            if (start >= 1 && end >= start && end <= 65535) {
+                count += (end - start + 1);
+            } else {
+                /* invalid range will be caught later */
+                count++;
+            }
+        } else {
+            count++;
+        }
+        tok = strtok(NULL, ",");
     }
     
     if (count == 0) {
@@ -126,7 +144,7 @@ int parse_ports(const char *port_spec) {
     }
     
     g_config->num_ports = 0;
-    token = strtok(buf, ",");
+    char *token = strtok(buf, ",");
     
     while (token) {
         /* Skip whitespace */

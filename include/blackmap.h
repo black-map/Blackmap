@@ -7,6 +7,7 @@
 #include <time.h>
 #include <sys/queue.h>
 #include <netinet/in.h>
+#include "blackmap3/network.h"
 
 /* Version */
 #define BLACKMAP_VERSION "3.1.0"
@@ -175,10 +176,10 @@ typedef struct {
     bool proxy_enforced;
     int dns_mode; /* 0=local, 1=proxy, 2=none */
     
-    /* Stealth */
-    bool slow_stealth;
+    /* Host discovery */
+    bool skip_ping;              /* -Pn: Skip host discovery, treat all as up */
     
-    /* Output formats */
+    /* Threading */
     bool output_normal;
     bool output_xml;
     bool output_grep;
@@ -202,12 +203,18 @@ typedef struct {
     /* Randomization */
     bool randomize_hosts;
     
+    /* Stealth modes */
+    bool slow_stealth;           /* Ultra-conservative scanning */
+    
     /* Privileges check */
     bool require_root;
 } blackmap_config_t;
 
 /* Global config */
 extern blackmap_config_t *g_config;
+
+/* Networking engine used by both discovery and scanning */
+extern network_engine_t *g_engine;
 
 /* Core functions */
 int blackmap_init(void);

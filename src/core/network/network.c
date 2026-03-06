@@ -7,6 +7,7 @@
 #include "blackmap3/network.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -34,11 +35,16 @@ struct network_engine_internal {
     // Epoll state
     struct epoll_event *epoll_events;
     
-    // Connection tracking
+    // Connection tracking (currently only used in cleanup)
     connection_t **connections;  // Hash table of active connections
     uint32_t connections_size;
     uint32_t connections_count;
     
+    // Completed connection list (for caller to collect results)
+    connection_t **completed;      // dynamic array of finished connections
+    uint32_t completed_capacity;
+    uint32_t completed_count;
+
     // Buffer pool for banners
     buffer_chunk_t buffer_pool[BUFFER_POOL_SIZE];
     uint32_t buffer_available;
@@ -135,6 +141,11 @@ network_engine_t* network_engine_init(
     
     // Initialize buffer pool
     eng->buffer_available = BUFFER_POOL_SIZE;
+
+    // Initialize completed list
+    eng->completed_capacity = 1024;
+    eng->completed = (connection_t**)malloc(sizeof(connection_t*) * eng->completed_capacity);
+    eng->completed_count = 0;
     
     // Record startup time
     clock_gettime(CLOCK_MONOTONIC, &eng->engine_start_time);
@@ -159,6 +170,9 @@ void network_engine_cleanup(network_engine_t *engine) {
             free(eng->connections[i]);
         }
     }
+
+    // Free completed list storage (caller is responsible for freeing each connection)
+    if (eng->completed) free(eng->completed);
     
     // Free memory
     if (eng->connections) free(eng->connections);
@@ -316,6 +330,13 @@ int network_process_batch(
             conn->fd = -1;
             conn->state = CONN_STATE_TIMEOUT;
             engine->total_timeouts++;
+            // record as completed for caller
+            if (eng->completed_count >= eng->completed_capacity) {
+                uint32_t newcap = eng->completed_capacity * 2;
+                eng->completed = (connection_t**)realloc(eng->completed, sizeof(connection_t*) * newcap);
+                eng->completed_capacity = newcap;
+            }
+            eng->completed[eng->completed_count++] = conn;
             continue;
         }
         
@@ -347,6 +368,12 @@ int network_process_batch(
                 conn->error_code = err;
                 conn->state = CONN_STATE_ERROR;
                 engine->total_errors++;
+                if (eng->completed_count >= eng->completed_capacity) {
+                    uint32_t newcap = eng->completed_capacity * 2;
+                    eng->completed = (connection_t**)realloc(eng->completed, sizeof(connection_t*) * newcap);
+                    eng->completed_capacity = newcap;
+                }
+                eng->completed[eng->completed_count++] = conn;
                 continue;
             }
             
@@ -357,7 +384,22 @@ int network_process_batch(
             conn->state = CONN_STATE_OPEN;
             engine->total_connections_successful++;
             
-            // Modify epoll to watch for readable (banner data)
+            // For TCP connect probes, close immediately after connection
+            if (conn->probe_type == PROBE_TCP_CON) {
+                epoll_ctl(engine->epoll_fd, EPOLL_CTL_DEL, conn->fd, NULL);
+                close(conn->fd);
+                conn->fd = -1;
+                // Add to completed list
+                if (eng->completed_count >= eng->completed_capacity) {
+                    uint32_t newcap = eng->completed_capacity * 2;
+                    eng->completed = (connection_t**)realloc(eng->completed, sizeof(connection_t*) * newcap);
+                    eng->completed_capacity = newcap;
+                }
+                eng->completed[eng->completed_count++] = conn;
+                continue;
+            }
+            
+            // For other probes, modify epoll to watch for readable (banner data)
             struct epoll_event new_ev;
             new_ev.events = EPOLLIN | EPOLLERR;
             new_ev.data.ptr = (void*)conn;
@@ -435,4 +477,19 @@ network_metrics_t network_get_metrics(network_engine_t *engine) {
     }
     
     return metrics;
+}
+
+int network_collect_finished(network_engine_t *engine,
+                             connection_t ***out_list,
+                             uint32_t *out_count)
+{
+    if (!engine || !out_list || !out_count) return -1;
+    
+    struct network_engine_internal *eng = (struct network_engine_internal*)engine;
+    *out_list = eng->completed;
+    *out_count = eng->completed_count;
+    
+    /* reset completed count; caller now owns returned pointers */
+    eng->completed_count = 0;
+    return 0;
 }

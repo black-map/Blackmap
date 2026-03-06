@@ -34,7 +34,9 @@ typedef enum {
     PROBE_TCP_SYN  = 1,
     PROBE_TCP_CON  = 2,
     PROBE_UDP      = 3,
-    PROBE_BANNER   = 4
+    PROBE_BANNER   = 4,
+    PROBE_ICMP_ECHO = 5,   /* ICMP ping */
+    PROBE_TCP_ACK   = 6    /* TCP ACK ping for firewall/host discovery */
 } probe_type_t;
 
 typedef struct {
@@ -120,6 +122,22 @@ int network_process_batch(
     network_engine_t *engine,
     uint32_t timeout_logic_ms
 );
+
+/**
+ * After calling network_process_batch(), retrieve list of connections that
+ * reached a terminal state (open/closed/error/timeout).  The returned array
+ * points to internal storage which remains valid until the next call to this
+ * function or until the engine is cleaned up.  The caller **must** free each
+ * connection object via connection_free() when finished using it.
+ *
+ * @param engine network engine instance
+ * @param out_list pointer to receive array of connection_t pointers
+ * @param out_count pointer to receive number of entries returned
+ * @return 0 on success, -1 on error
+ */
+int network_collect_finished(network_engine_t *engine,
+                             connection_t ***out_list,
+                             uint32_t *out_count);
 
 // Get connection results
 // Returns: CONN_STATE_* on success, -1 on error

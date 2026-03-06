@@ -2,6 +2,12 @@ CC ?= gcc
 CFLAGS = -Wall -Wextra -O2 -I./include -D_GNU_SOURCE
 LDFLAGS = ./rust/target/release/libblackmap_rust.a -ldl
 
+# Enable sanitizers when DEBUG target is used
+ifdef DEBUG
+    CFLAGS += -g -O0 -fsanitize=address,undefined
+    LDFLAGS += -fsanitize=address,undefined
+endif
+
 # Optional: liburing
 ifeq ($(shell pkg-config --exists liburing && echo 1),1)
     CFLAGS += -DHAVE_LIBURING

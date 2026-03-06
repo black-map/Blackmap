@@ -57,6 +57,7 @@ typedef struct {
     char **target_ips;          // target_ips[host_idx] = IP string
     uint32_t num_hosts;
     uint32_t num_total_tasks;   // Total tasks to schedule
+    probe_type_t default_probe; // default probe type for queued tasks
 } scan_plan_t;
 
 /* ====================================================================

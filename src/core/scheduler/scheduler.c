@@ -60,7 +60,7 @@ int scheduler_enqueue_plan(scheduler_t *sched, const scan_plan_t *plan) {
             uint32_t idx = sched->queue_head;
             sched->queue[idx].host_index = h;
             sched->queue[idx].port = plan->ports[h][p];
-            sched->queue[idx].probe_type = PROBE_TCP_CON;
+            sched->queue[idx].probe_type = plan->default_probe;
             
             sched->queue_head = (sched->queue_head + 1) % sched->queue_capacity;
             sched->queue_count++;

@@ -17,15 +17,21 @@ void print_usage(const char *prog) {
         "                             Examples: -p 22,80,443 or -p 1-1000 or -p-\n"
         "  -sV                        Probe open ports for service/version information\n"
         "  -O                         Enable OS detection\n\n"
-        "HOST DISCOVERY:\n"
-        "  -Pn                        Skip ping (default, fastest)\n"
-        "  -sn                        Ping scan only\n\n"
+        "  -h, --help                 Show this help message\n"
+        "\nHOST DISCOVERY:\n"
+        "  -Pn                        Skip host discovery, treat all targets as alive\n"
+        "  -sn                        Ping scan only (no port scanning)\n"
+        "  -PE                        ICMP echo ping\n"
+        "  -PA <port>                 TCP ACK ping\n"
+        "  -PS <port>                 TCP SYN ping\n"
+        "  -PU <port>                 UDP ping\n\n"
         "SCAN TECHNIQUES:\n"
         "  -sS                        TCP SYN scan (requires root)\n"
         "  -sT                        TCP CONNECT scan (default, no root required)\n\n"
         "TIMING:\n"
         "  -T0 to -T5                 Timing template (0=paranoid...5=insane)\n"
-        "  --max-rate <num>           Send no more than <num> packets per second\n\n"
+        "  --max-rate <num>           Send no more than <num> packets per second\n"
+        "  --threads <n>              Number of concurrent sockets (default 500)\n\n"
         "OUTPUT:\n"
         "  -oN <file>                 Output to normal text file\n"
         "  -oJ <file>                 Output to JSON file\n"
@@ -60,6 +66,7 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
         {"min-rate", required_argument, 0, 1002},
         {"max-rate", required_argument, 0, 1003},
         {"scan-delay", required_argument, 0, 1004},
+        {"threads", required_argument, 0, 1025},
         {"max-scan-delay", required_argument, 0, 1005},
         {"initial-rtt-timeout", required_argument, 0, 1006},
         {"version-intensity", required_argument, 0, 1007},
@@ -87,7 +94,7 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
     config->io_engine = IO_ENGINE_SELECT;
     config->scan_type = SCAN_TYPE_CONNECT;  // Default to CONNECT (no root needed)
     config->timing = TIMING_NORMAL;
-    config->num_threads = 16;
+    config->num_threads = 500;              // default concurrency
     config->timeout_ms = 5000;
     config->retries = 2;
     config->require_root = false;           // CONNECT scan doesn't need root
@@ -95,7 +102,7 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
     config->dns_mode = 0;                   // local by default
     strncpy(config->metrics_format, "table", sizeof(config->metrics_format)-1);
 
-    while ((c = getopt_long(argc, argv, "hVvDo:p:s::S::t:T::OPn", long_opts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "hVvDo:p:s::S::t:T::P::n", long_opts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 print_usage(argv[0]);
@@ -173,10 +180,15 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
                 config->os_detection = true;
                 break;
             case 'P':
-                // Ping types, stub
+                if (optarg && strcmp(optarg, "n") == 0) {
+                    config->skip_ping = true;
+                } else {
+                    // Ping types, stub
+                }
                 break;
             case 'n':
-                // Skip DNS, stub
+                /* skip DNS lookups when resolving hostnames */
+                // not yet implemented; left for later
                 break;
             case 1000: // --io-engine
                 if (strcmp(optarg, "select") == 0) config->io_engine = IO_ENGINE_SELECT;
@@ -202,6 +214,13 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
                 break;
             case 1005: // --max-scan-delay
                 config->max_scan_delay_ms = atoi(optarg);
+                break;
+            case 1025: // --threads
+                config->num_threads = atoi(optarg);
+                if (config->num_threads == 0) {
+                    fprintf(stderr, "Invalid thread count: %s\n", optarg);
+                    return -1;
+                }
                 break;
             case 1006: // --initial-rtt-timeout
                 config->timeout_ms = atoi(optarg);
@@ -259,6 +278,9 @@ int parse_command_line(int argc, char *argv[], blackmap_config_t *config) {
                 break;
             case 1022: // --log
                 log_init(optarg);
+                break;
+            case 1023: // --slow-stealth
+                config->slow_stealth = true;
                 break;
             case 1024: // --metrics
                 if (strcmp(optarg, "table") == 0 || strcmp(optarg, "json") == 0) {
