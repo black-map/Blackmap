@@ -260,6 +260,39 @@ impl Scanner {
                 hosts_with_open_ports += 1;
             }
 
+            // Perform OS Detection if enabled
+            if self.config.os_detection && host_result.is_up {
+                let mut os_detected = None;
+                
+                // Try executing a ping to get TTL as a proxy for OS Fingerprinting since raw sockets aren't used here 
+                if let Ok(output) = std::process::Command::new("ping")
+                    .args(&["-c", "1", "-W", "2", &ip.to_string()])
+                    .output()
+                {
+                    if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        // Look for "ttl=" in the output
+                        for word in stdout.split_whitespace() {
+                            if word.starts_with("ttl=") || word.starts_with("TTL=") {
+                                // Extract only digits to avoid parsing errors from attached characters (e.g. "ttl=250 ")
+                                let ttl_str: String = word[4..].chars().filter(|c| c.is_digit(10)).collect();
+                                if let Ok(ttl) = ttl_str.parse::<u8>() {
+                                    let os_info = crate::os_detection::OsDetector::detect_from_heuristics(ttl, None);
+                                    os_detected = Some(os_info.description);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if os_detected.is_none() {
+                    os_detected = Some("Unknown (Ping blocked or requires root)".to_string());
+                }
+                
+                host_result.os = os_detected;
+            }
+
             host_scans.push(host_result);
         }
 
@@ -339,20 +372,47 @@ impl Scanner {
         let mut waf_result = None;
         
         // If port is open and service detection is enabled, grab banner
-        if final_state == PortState::Open && do_service_detection {
-             if let Some(banner_res) = grab_banner(&addr.ip(), addr.port()).await {
-                 let detected = ServiceDetector::detect_from_banner(&banner_res.payload);
-                 service = Some(detected.service.clone());
-                 version = detected.version;
-                 confidence = Some(detected.confidence);
-                 
-                 // Deep Recon: CDN and WAF detection for HTTP/HTTPS
-                 if port == 80 || port == 443 || detected.service.to_uppercase() == "HTTP" {
-                     if let Some(cdn) = detect_cdn(&addr.ip().to_string(), &banner_res.payload) {
-                         cdn_result = Some(format!("{:?}", cdn)); // simplified string format
+        if final_state == PortState::Open {
+             let default_service = match addr.port() {
+                 20 | 21 => "ftp",
+                 22 => "ssh",
+                 23 => "telnet",
+                 25 | 465 | 587 => "smtp",
+                 53 => "domain",
+                 80 | 8080 => "http",
+                 110 | 995 => "pop3",
+                 143 | 993 => "imap",
+                 443 | 8443 => "https",
+                 445 => "microsoft-ds",
+                 3306 => "mysql",
+                 3389 => "ms-wbt-server",
+                 5432 => "postgresql",
+                 8000 => "http-alt",
+                 _ => "unknown",
+             };
+             
+             service = Some(default_service.to_string());
+             
+             if do_service_detection {
+                 if let Some(banner_res) = grab_banner(&addr.ip(), addr.port()).await {
+                     if let Some(detected) = ServiceDetector::detect_from_banner(&banner_res.payload) {
+                         service = Some(detected.service.clone());
+                         version = detected.version;
+                         confidence = Some(detected.confidence);
                      }
-                     if let Some(waf) = detect_waf(&banner_res.payload) {
-                         waf_result = Some(format!("{:?}", waf));
+                     
+                     // Deep Recon: CDN and WAF detection for HTTP/HTTPS
+                     let is_http = addr.port() == 80 || addr.port() == 443 || 
+                                   service.as_deref().unwrap_or("").to_uppercase() == "HTTP" ||
+                                   service.as_deref().unwrap_or("").to_uppercase() == "HTTPS";
+                                   
+                     if is_http {
+                         if let Some(cdn) = detect_cdn(&addr.ip().to_string(), &banner_res.payload) {
+                             cdn_result = Some(format!("{:?}", cdn)); // simplified string format
+                         }
+                         if let Some(waf) = detect_waf(&banner_res.payload) {
+                             waf_result = Some(format!("{:?}", waf));
+                         }
                      }
                  }
              }

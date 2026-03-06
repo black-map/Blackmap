@@ -123,7 +123,7 @@ pub struct ServiceDetector;
 
 impl ServiceDetector {
     /// Detect service from banner
-    pub fn detect_from_banner(banner: &str) -> ServiceInfo {
+    pub fn detect_from_banner(banner: &str) -> Option<ServiceInfo> {
         for pattern in SERVICE_PATTERNS.iter() {
             for regex in &pattern.patterns {
                 if let Some(captures) = regex.captures(banner) {
@@ -146,27 +146,20 @@ impl ServiceDetector {
                             .map(|m| m.as_str().to_string());
                     }
 
-                    return ServiceInfo {
+                    return Some(ServiceInfo {
                         service: pattern.service.clone(),
                         product: None,
                         version,
                         banner: banner.to_string(),
                         confidence: pattern.confidence,
                         metadata: None,
-                    };
+                    });
                 }
             }
         }
 
         // Unknown service
-        ServiceInfo {
-            service: "Unknown".to_string(),
-            product: None,
-            version: None,
-            banner: banner.to_string(),
-            confidence: 0,
-            metadata: None,
-        }
+        None
     }
 }
 
@@ -178,7 +171,7 @@ mod tests {
     #[test]
     fn test_ssh_detection() {
         let banner = "SSH-2.0-OpenSSH_7.4";
-        let info = ServiceDetector::detect_from_banner(banner);
+        let info = ServiceDetector::detect_from_banner(banner).unwrap();
         assert_eq!(info.service, "SSH");
     }
 }
