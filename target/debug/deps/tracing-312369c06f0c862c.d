@@ -1,0 +1,12 @@
+/home/mayer/Escritorio/Blackmap/target/debug/deps/tracing-312369c06f0c862c.d: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/macros.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/dispatcher.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/field.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/instrument.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/level_filters.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/span.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/subscriber.rs
+
+/home/mayer/Escritorio/Blackmap/target/debug/deps/libtracing-312369c06f0c862c.rmeta: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/macros.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/dispatcher.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/field.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/instrument.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/level_filters.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/span.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/subscriber.rs
+
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/lib.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/macros.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/dispatcher.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/field.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/instrument.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/level_filters.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/span.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/subscriber.rs:

@@ -55,6 +55,15 @@ pub struct ScanConfig {
 
     /// Max retries per probe
     pub max_retries: u32,
+
+    /// Decoy IPs to use for spoofing
+    pub decoys: Vec<String>,
+
+    /// Source port (if set, overrides randomized ports)
+    pub source_port: Option<u16>,
+
+    /// Randomize target ports
+    pub randomize_ports: bool,
 }
 
 /// Types of scans
@@ -107,6 +116,9 @@ impl Default for ScanConfig {
             rate_limit: 0,
             probe_timeout: Duration::from_secs(5),
             max_retries: 2,
+            decoys: Vec::new(),
+            source_port: None,
+            randomize_ports: false,
         }
     }
 }

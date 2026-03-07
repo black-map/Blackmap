@@ -1,0 +1,12 @@
+[package]
+name = "modules"
+version = "5.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+once_cell = { workspace = true }

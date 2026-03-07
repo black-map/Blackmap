@@ -1,0 +1,10 @@
+[package]
+name = "cli"
+version = "5.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+tokio = { workspace = true }
+blackmap = { path = "../rust" }
+tracing-subscriber = { workspace = true }

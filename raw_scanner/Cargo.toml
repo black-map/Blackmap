@@ -1,0 +1,10 @@
+[package]
+name = "raw_scanner"
+version = "5.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+pnet = { workspace = true }
+crossbeam = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,11 @@
+/home/mayer/Escritorio/Blackmap/target/debug/deps/rusty_fork-ac76e6f529655afb.d: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/sugar.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork_test.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/error.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/cmdline.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/child_wrapper.rs
+
+/home/mayer/Escritorio/Blackmap/target/debug/deps/librusty_fork-ac76e6f529655afb.rmeta: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/sugar.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork_test.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/error.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/cmdline.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/child_wrapper.rs
+
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/lib.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/sugar.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork_test.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/error.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/cmdline.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/fork.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusty-fork-0.3.1/src/child_wrapper.rs:

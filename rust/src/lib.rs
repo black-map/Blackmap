@@ -6,20 +6,15 @@
 #![warn(missing_docs)]
 
 // Core modules
-pub mod cli;
 pub mod config;
 pub mod dns;
 pub mod scanner;
-pub mod service_detection;
-pub mod banner_grabbing;
-pub mod os_detection;
 pub mod cdn_detection;
 pub mod waf_detection;
 pub mod subdomain_enum;
 pub mod output;
 
 // Additional modules
-pub mod stealth;
 pub mod scheduler;
 pub mod plugin;
 pub mod error;
@@ -30,14 +25,11 @@ pub mod distributed;
 pub use config::ScanConfig;
 pub use scanner::{Scanner, ScanResult};
 pub use dns::DnsResolver;
-pub use stealth::StealthEngine;
-pub use service_detection::ServiceDetector;
-pub use os_detection::OsDetector;
 pub use output::{OutputFormat, format_output};
 pub use error::Result;
 
 /// BlackMap version string
-pub const VERSION: &str = "4.0.0";
+pub const VERSION: &str = "5.1.0";
 
 /// Initialize BlackMap runtime
 pub async fn init() -> Result<()> {

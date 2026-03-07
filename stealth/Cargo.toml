@@ -1,0 +1,11 @@
+[package]
+name = "stealth"
+version = "5.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+rand = "0.8"
+serde = { workspace = true }
+serde_json = { workspace = true }

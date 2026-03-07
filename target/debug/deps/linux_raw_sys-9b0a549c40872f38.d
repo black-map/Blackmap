@@ -1,0 +1,10 @@
+/home/mayer/Escritorio/Blackmap/target/debug/deps/linux_raw_sys-9b0a549c40872f38.d: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/elf.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/auxvec.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/errno.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/general.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/ioctl.rs
+
+/home/mayer/Escritorio/Blackmap/target/debug/deps/liblinux_raw_sys-9b0a549c40872f38.rmeta: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/elf.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/auxvec.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/errno.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/general.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/ioctl.rs
+
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/lib.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/elf.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/auxvec.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/errno.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/general.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/linux-raw-sys-0.12.1/src/x86_64/ioctl.rs:

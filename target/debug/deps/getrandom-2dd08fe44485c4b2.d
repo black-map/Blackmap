@@ -1,0 +1,12 @@
+/home/mayer/Escritorio/Blackmap/target/debug/deps/getrandom-2dd08fe44485c4b2.d: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error_impls.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util_libc.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/use_file.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lazy.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/linux_android_with_fallback.rs
+
+/home/mayer/Escritorio/Blackmap/target/debug/deps/libgetrandom-2dd08fe44485c4b2.rmeta: /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lib.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error_impls.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util_libc.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/use_file.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lazy.rs /home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/linux_android_with_fallback.rs
+
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lib.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/error_impls.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/util_libc.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/use_file.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/lazy.rs:
+/home/mayer/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.2.17/src/linux_android_with_fallback.rs:

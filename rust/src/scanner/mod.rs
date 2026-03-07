@@ -16,8 +16,8 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio::task::JoinSet;
-use crate::banner_grabbing::grab_banner;
-use crate::service_detection::ServiceDetector;
+use modules::banner_grabbing::grab_banner;
+use modules::service_detection::ServiceDetector;
 use crate::cdn_detection::{detect_cdn, CdnProvider};
 use crate::waf_detection::{detect_waf, WafProvider};
 
@@ -193,7 +193,77 @@ impl Scanner {
         let mut total_filtered = 0;
         let mut hosts_with_open_ports = 0;
 
-        for ip in all_ips {
+        if self.config.scan_type == ScanType::TcpSyn {
+            tracing::info!("Engaging Stateless Raw Socket TCP-SYN Engine (Requires Root)...");
+            let engine = raw_scanner::StatelessScanner::new(
+                all_ips.clone(),
+                self.config.ports.clone(),
+                self.config.rate_limit,
+            );
+            
+            if let Ok(open_ports) = engine.run().await {
+                for ip in all_ips.clone() {
+                    let mut host_result = HostScan {
+                        host: ip.to_string(),
+                        is_up: false,
+                        ports: Vec::new(),
+                        os: None,
+                    };
+                    
+                    let my_open_ports: Vec<u16> = open_ports.iter()
+                        .filter(|op| op.ip == ip)
+                        .map(|op| op.port)
+                        .collect();
+                        
+                    for &p in &self.config.ports {
+                        if my_open_ports.contains(&p) {
+                            total_open += 1;
+                            
+                            // For v5.1 architecture, service detections happen dynamically afterwards 
+                            let mut service = None;
+                            let mut version = None;
+                            let mut confidence = None;
+                            
+                            if self.config.service_detection {
+                                // Dynamic banner grabbing
+                                if let Ok(Some(banner)) = timeout(Duration::from_secs(2), grab_banner(&ip, p)).await {
+                                    if let Some(detected) = ServiceDetector::detect_from_banner(&banner.payload) {
+                                        service = Some(detected.service);
+                                        version = detected.version;
+                                        confidence = Some(detected.confidence);
+                                    }
+                                }
+                            }
+                            
+                            host_result.ports.push(PortScan {
+                                ip,
+                                port: p,
+                                state: PortState::Open,
+                                response_time: None,
+                                service,
+                                version,
+                                confidence,
+                                cdn: None,
+                                waf: None,
+                            });
+                        } else {
+                            total_filtered += 1;
+                        }
+                    }
+                    
+                    host_result.is_up = !my_open_ports.is_empty();
+                    if host_result.is_up {
+                        hosts_with_open_ports += 1;
+                    }
+                    
+                    host_scans.push(host_result);
+                }
+            } else {
+                tracing::error!("Stateless Raw Socket scanner failed. Root privileges are required.");
+                std::process::exit(1);
+            }
+        } else {
+            for ip in all_ips {
             let mut host_result = HostScan {
                 host: ip.to_string(),
                 is_up: false,
@@ -277,7 +347,7 @@ impl Scanner {
                                 // Extract only digits to avoid parsing errors from attached characters (e.g. "ttl=250 ")
                                 let ttl_str: String = word[4..].chars().filter(|c| c.is_digit(10)).collect();
                                 if let Ok(ttl) = ttl_str.parse::<u8>() {
-                                    let os_info = crate::os_detection::OsDetector::detect_from_heuristics(ttl, None);
+                                    let os_info = modules::os_detection::OsDetector::detect_from_heuristics(ttl, None);
                                     os_detected = Some(os_info.description);
                                     break;
                                 }
@@ -294,6 +364,7 @@ impl Scanner {
             }
 
             host_scans.push(host_result);
+        }
         }
 
         let elapsed = start.elapsed();

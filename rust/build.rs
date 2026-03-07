@@ -2,11 +2,11 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let src_dir = PathBuf::from("../src");
-    let include_dir = PathBuf::from("../include");
+    let src_dir = PathBuf::from("../core/src");
+    let include_dir = PathBuf::from("../core/include");
 
-    println!("cargo:rerun-if-changed=../src");
-    println!("cargo:rerun-if-changed=../include");
+    println!("cargo:rerun-if-changed=../core/src");
+    println!("cargo:rerun-if-changed=../core/include");
 
     // Build the C files into a static library
     cc::Build::new()
