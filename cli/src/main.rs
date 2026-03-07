@@ -1,6 +1,6 @@
-//! BlackMap 4.0 CLI Application
+//! BlackMap 5.2 CLI Application
 //!
-//! Fast, stealthy network reconnaissance framework
+//! Fast, stealthy network reconnaissance framework with native Nmap fingerprint detection
 //! 
 //! Usage examples:
 //!   blackmap -p 22,80,443 scanme.nmap.org

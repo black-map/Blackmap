@@ -8,8 +8,8 @@ use std::path::PathBuf;
 /// Command line arguments for BlackMap
 #[derive(Parser, Debug)]
 #[command(name = "BlackMap")]
-#[command(author, version = "4.0.0")]
-#[command(about = "Fast, stealthy network reconnaissance framework", long_about = None)]
+#[command(author, version = "5.2.0")]
+#[command(about = "Fast, stealthy network reconnaissance framework with native fingerprint detection", long_about = None)]
 pub struct Args {
     #[command(subcommand)]
     pub command: Commands,
