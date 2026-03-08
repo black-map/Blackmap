@@ -137,8 +137,11 @@ impl SynSender {
             Err(e) => return Err(format!("Failed to open channel: {}", e)),
         };
 
-        // Use broadcast MAC for routing
-        let dest_mac = pnet::datalink::MacAddr::broadcast();
+        // Use gateway MAC for routing instead of broadcast
+        let dest_mac = self.get_gateway_mac().unwrap_or_else(|| {
+            warn!("Could not resolve gateway MAC, using broadcast");
+            pnet::datalink::MacAddr::broadcast()
+        });
 
         let batch_size = std::cmp::max(10, (rate_limit / 100).max(100)) as usize;
         let mut packet_count = 0u32;
@@ -203,5 +206,56 @@ impl SynSender {
 
         info!("SynSender completed transmission");
         Ok(())
+    }
+
+    /// Attempts to resolve the gateway MAC address for proper packet routing
+    fn get_gateway_mac(&self) -> Option<pnet::datalink::MacAddr> {
+        // Get the default gateway IP
+        let gateway_ip = self.get_default_gateway()?;
+        
+        // Try to find it in ARP table
+        if let Ok(output) = std::process::Command::new("ip")
+            .args(&["neigh", "show", &gateway_ip.to_string()])
+            .output()
+        {
+            if let Ok(output_str) = String::from_utf8(output.stdout) {
+                // Parse the output to find the MAC address
+                for line in output_str.lines() {
+                    if line.contains(&gateway_ip.to_string()) && line.contains("lladdr") {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        for (i, part) in parts.iter().enumerate() {
+                            if *part == "lladdr" && i + 1 < parts.len() {
+                                if let Ok(mac) = parts[i + 1].parse::<pnet::datalink::MacAddr>() {
+                                    return Some(mac);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// Gets the default gateway IP address
+    fn get_default_gateway(&self) -> Option<Ipv4Addr> {
+        if let Ok(output) = std::process::Command::new("ip")
+            .args(&["route", "show", "default"])
+            .output()
+        {
+            if let Ok(output_str) = String::from_utf8(output.stdout) {
+                for line in output_str.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 3 && parts[0] == "default" && parts[1] == "via" {
+                        if let Ok(ip) = parts[2].parse::<Ipv4Addr>() {
+                            return Some(ip);
+                        }
+                    }
+                }
+            }
+        }
+        
+        None
     }
 }

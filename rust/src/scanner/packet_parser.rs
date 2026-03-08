@@ -84,10 +84,8 @@ fn parse_tcp_packet(source_ip: IpAddr, payload: &[u8]) -> ParsedTcpReply {
     let rst_flag = (flags & 0x04) != 0;
 
     if syn_flag && ack_flag {
-        debug!("SYN-ACK detected from {}:{}", source_ip, source_port);
         ParsedTcpReply::SynAck(source_ip, source_port)
     } else if rst_flag {
-        debug!("RST detected from {}:{}", source_ip, source_port);
         ParsedTcpReply::Rst(source_ip, source_port)
     } else {
         // Other TCP flags we don't care about

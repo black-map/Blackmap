@@ -100,7 +100,6 @@ impl SynReceiver {
                         }
                         ParsedTcpReply::Unknown => {
                             // This is normal - most traffic won't be TCP responses to our probes
-                            debug!("Received non-target packet, ignoring");
                         }
                     }
                 }
