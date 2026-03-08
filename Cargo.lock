@@ -135,7 +135,7 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "blackmap"
-version = "5.1.2"
+version = "6.0.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -303,7 +303,7 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 
 [[package]]
 name = "cli"
-version = "5.1.2"
+version = "6.0.0"
 dependencies = [
  "blackmap",
  "clap",

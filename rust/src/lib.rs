@@ -30,7 +30,7 @@ pub use output::{OutputFormat, format_output};
 pub use error::Result;
 
 /// BlackMap version string
-pub const VERSION: &str = "5.1.2";
+pub const VERSION: &str = "6.0.0";
 
 /// Initialize BlackMap runtime
 pub async fn init() -> Result<()> {

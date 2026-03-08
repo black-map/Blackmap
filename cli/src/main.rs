@@ -18,7 +18,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> blackmap::error::Result<()> {
     // custom help text copied from legacy v1.2.0 output and updated
-    const HELP_TEXT: &str = r#"BlackMap 5.1.2 (https://github.com/black-map/Blackmap)
+    const HELP_TEXT: &str = r#"BlackMap Ultimate 6.0.0 (https://github.com/black-map/Blackmap)
 High‑Performance Network Reconnaissance Scanner
 
 Usage:

@@ -1,6 +1,6 @@
 [package]
 name = "blackmap"
-version = "5.1.2"
+version = "6.0.0"
 edition = "2021"
 authors = ["BlackMap Contributors"]
 license = "MIT"
