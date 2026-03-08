@@ -53,21 +53,26 @@ impl SynReceiver {
             Err(e) => return Err(format!("Failed to create datalink channel: {}", e)),
         };
 
-        info!("SynReceiver listening on interface: {}", self.interface.name);
+        info!("SynReceiver listening on interface: {} for TCP responses", self.interface.name);
 
         let mut packets_received = 0usize;
-        let mut responses_processed = 0usize;
+        let mut syn_acks_detected = 0usize;
+        let mut rsts_detected = 0usize;
+        let mut unknown_responses = 0usize;
         let start_time = Instant::now();
-        let max_idle_time = Duration::from_secs(10); // Maximum idle time before giving up
+        let max_idle_time = Duration::from_secs(15); // Maximum idle time before giving up
         let mut last_packet_time = Instant::now();
 
         loop {
             // Check for shutdown signal
             if let Ok(_) = shutdown_rx.try_recv() {
                 info!(
-                    "SynReceiver shutting down. Received {} packets in {:.2}s",
+                    "SynReceiver shutting down. Received {} packets in {:.2}s. SYN-ACKs: {}, RSTs: {}, Unknown: {}",
                     packets_received,
-                    start_time.elapsed().as_secs_f64()
+                    start_time.elapsed().as_secs_f64(),
+                    syn_acks_detected,
+                    rsts_detected,
+                    unknown_responses
                 );
                 break;
             }
@@ -84,26 +89,31 @@ impl SynReceiver {
                     packets_received += 1;
                     last_packet_time = Instant::now();
 
-                    debug!("Received packet #{}: {} bytes", packets_received, packet_data.len());
-
                     // Parse the packet to extract TCP information
                     match parse_packet(packet_data) {
                         ParsedTcpReply::SynAck(source_ip, source_port) => {
-                            debug!("Detected SYN-ACK from {}:{}", source_ip, source_port);
+                            info!(
+                                "✓ OPEN DETECTED: {}:{} responded with SYN-ACK",
+                                source_ip, source_port
+                            );
                             tracker.mark_open(source_ip, source_port);
-                            responses_processed += 1;
+                            syn_acks_detected += 1;
                         }
                         ParsedTcpReply::Rst(source_ip, source_port) => {
-                            debug!("Detected RST from {}:{}", source_ip, source_port);
+                            info!(
+                                "✗ CLOSED DETECTED: {}:{} responded with RST",
+                                source_ip, source_port
+                            );
                             tracker.mark_closed(source_ip, source_port);
-                            responses_processed += 1;
+                            rsts_detected += 1;
                         }
                         ParsedTcpReply::Unknown => {
                             // This is normal - most traffic won't be TCP responses to our probes
+                            unknown_responses += 1;
                         }
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     // This is expected - pnet returns errors on timeout
                     // We handle this gracefully and continue
                     tokio::task::yield_now().await;
@@ -112,9 +122,11 @@ impl SynReceiver {
         }
 
         info!(
-            "SynReceiver finished. Packets: {}, Responses: {}, Runtime: {:.2}s",
+            "SynReceiver finished. Total packets: {}, SYN-ACKs: {}, RSTs: {}, Other: {}, Runtime: {:.2}s",
             packets_received,
-            responses_processed,
+            syn_acks_detected,
+            rsts_detected,
+            unknown_responses,
             start_time.elapsed().as_secs_f64()
         );
         Ok(())

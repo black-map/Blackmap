@@ -30,7 +30,7 @@ pub use output::{OutputFormat, format_output};
 pub use error::Result;
 
 /// BlackMap version string
-pub const VERSION: &str = "5.1.0";
+pub const VERSION: &str = "5.1.2";
 
 /// Initialize BlackMap runtime
 pub async fn init() -> Result<()> {
@@ -48,6 +48,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialization() {
-        assert_eq!(VERSION, "5.1.0");
+        assert_eq!(VERSION, "5.1.2");
     }
 }

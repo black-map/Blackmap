@@ -77,18 +77,45 @@ fn parse_tcp_packet(source_ip: IpAddr, payload: &[u8]) -> ParsedTcpReply {
 
     let flags = tcp.get_flags();
     let source_port = tcp.get_source();
+    let dest_port = tcp.get_destination();
 
-    // Check for SYN-ACK (flags 0x12 = SYN(0x02) + ACK(0x10))
+    // TCP flags breakdown: bit order is FIN|SYN|RST|PSH|ACK|URG|ECE|CWR
+    // FIN = 0x01
+    // SYN = 0x02
+    // RST = 0x04
+    // PSH = 0x08
+    // ACK = 0x10
+    // URG = 0x20
+    // ECE = 0x40
+    // CWR = 0x80
+    
     let syn_flag = (flags & 0x02) != 0;
     let ack_flag = (flags & 0x10) != 0;
     let rst_flag = (flags & 0x04) != 0;
 
+    debug!(
+        "TCP from {}:{} to port {} - flags: 0x{:02x} (SYN={}, ACK={}, RST={})",
+        source_ip, source_port, dest_port, flags, syn_flag, ack_flag, rst_flag
+    );
+
+    // Response to our SYN probe:
+    // - SYN-ACK: Port is OPEN
+    // - RST: Port is CLOSED
+    // - Other responses: Port might be filtered or host is sending something unexpected
+    
     if syn_flag && ack_flag {
+        debug!("Classified as OPEN (SYN-ACK): {}:{}", source_ip, source_port);
         ParsedTcpReply::SynAck(source_ip, source_port)
     } else if rst_flag {
+        debug!("Classified as CLOSED (RST): {}:{}", source_ip, source_port);
         ParsedTcpReply::Rst(source_ip, source_port)
     } else {
-        // Other TCP flags we don't care about
+        // Other TCP flags (e.g., SYN alone, ACK alone, FIN, etc.)
+        // These shouldn't happen in response to our SYN probes
+        debug!(
+            "Unexpected TCP flags from {}:{}: 0x{:02x}",
+            source_ip, source_port, flags
+        );
         ParsedTcpReply::Unknown
     }
 }

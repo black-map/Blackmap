@@ -18,7 +18,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> blackmap::error::Result<()> {
     // custom help text copied from legacy v1.2.0 output and updated
-    const HELP_TEXT: &str = r#"BlackMap 5.1.0 (https://github.com/Brian-Rojo/Blackmap)
+    const HELP_TEXT: &str = r#"BlackMap 5.1.2 (https://github.com/black-map/Blackmap)
 High‑Performance Network Reconnaissance Scanner
 
 Usage:
@@ -350,7 +350,7 @@ https://github.com/Brian-Rojo/Blackmap
                 }
             }
 
-            println!("BlackMap 5.1.0 - Fast network reconnaissance framework");
+            println!("BlackMap 5.1.2 - Fast network reconnaissance framework");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
 
             // Distributed Mode Check
@@ -433,7 +433,7 @@ https://github.com/Brian-Rojo/Blackmap
         }
         
         Commands::Subdomains { domain, threads } => {
-            println!("BlackMap 5.1.0 - Subdomain Enumeration");
+            println!("BlackMap 5.1.2 - Subdomain Enumeration");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target: {}", domain);
             println!("[+] Threads: {}", threads);
