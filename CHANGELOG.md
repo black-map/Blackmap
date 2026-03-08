@@ -1,8 +1,8 @@
 # BlackMap Changelog
 
-## [5.2.0] - 2026-03-07
+## [5.1.0] - 2026-03-08
 
-### ✨ Major Features - Native Fingerprint Detection Engines
+### ✨ Major Features - Native Fingerprint Detection Engines & Global Connection Pool
 
 #### Service Database Engine
 - O(1) TCP/UDP service port lookups using native mappings
@@ -15,11 +15,14 @@
 - Concurrent probe execution with configurable timeout handling
 - Confidence scoring for version detection matches
 
-#### Advanced OS Fingerprint Engine
-- TCP stack profile analysis without raw socket requirements
-- Multi-test fingerprinting (SEQ, T1-T6 signatures)
-- 65%+ accuracy on OS identification
-- Confidence-based matching with fallback heuristics
+#### Advanced Application-Layer Service Probes
+- Precise native payload parsing handling HTTP, SSH, MySQL, PostgreSQL, Redis, MongoDB, and Docker Remote API.
+- Re-architected Probe dispatcher mapping to avoid async dyn trait object limitations.
+- Robust protocol-specific handling like BSON parsing for MongoDB and error extraction for PostgreSQL authentication routines.
+
+#### Global Connection Pooling Scanner Engine
+- Transitioned from blocking sequential local host iteration to a globally distributed `JoinSet` bounded by a strict `tokio::sync::Semaphore`.
+- Massive CIDR operations seamlessly maximize rate limits and global connection capacity without host timeouts bottlenecking discovery.
 
 #### Technical Improvements
 - Zero external dependencies - all engines implemented natively in Rust

@@ -29,6 +29,9 @@ pub struct ScanConfig {
     /// Enable OS fingerprinting
     pub os_detection: bool,
 
+    /// Enable OS version detection
+    pub os_version_detection: bool,
+
     /// Enable verbose output
     pub verbosity: u32,
 
@@ -50,6 +53,18 @@ pub struct ScanConfig {
     /// Rate limit (packets per second)
     pub rate_limit: u32,
 
+    /// Adaptive rate control enabled
+    pub adaptive_rate: bool,
+
+    /// Minimum packets per second (adaptive or manual)
+    pub min_rate: Option<u32>,
+
+    /// Maximum packets per second (adaptive or manual)
+    pub max_rate: Option<u32>,
+
+    /// Global scan duration (limits total scan time)
+    pub max_duration: Option<Duration>,
+
     /// Probe timeout
     pub probe_timeout: Duration,
 
@@ -64,6 +79,12 @@ pub struct ScanConfig {
 
     /// Randomize target ports
     pub randomize_ports: bool,
+
+    /// Ultra fast mode
+    pub ultra_mode: bool,
+
+    /// Internet scan mode
+    pub internet_scan: bool,
 }
 
 /// Types of scans
@@ -107,6 +128,7 @@ impl Default for ScanConfig {
             stealth_level: 1,
             service_detection: true,
             os_detection: false,
+            os_version_detection: false,
             verbosity: 0,
             output_file: None,
             output_format: "table".to_string(),
@@ -114,11 +136,17 @@ impl Default for ScanConfig {
             scan_type: ScanType::TcpConnect,
             skip_discovery: false,
             rate_limit: 0,
+            adaptive_rate: false,
+            min_rate: None,
+            max_rate: None,
+            max_duration: Some(Duration::from_secs(15)),
             probe_timeout: Duration::from_secs(5),
             max_retries: 2,
             decoys: Vec::new(),
             source_port: None,
             randomize_ports: false,
+            ultra_mode: false,
+            internet_scan: false,
         }
     }
 }
@@ -157,5 +185,8 @@ mod tests {
         let cfg = ScanConfig::default();
         assert_eq!(cfg.concurrency, 500);
         assert_eq!(cfg.stealth_level, 1);
+        assert_eq!(cfg.adaptive_rate, false);
+        // default global duration should be 15 seconds
+        assert_eq!(cfg.max_duration.unwrap(), Duration::from_secs(15));
     }
 }

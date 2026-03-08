@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Command line arguments for BlackMap
 #[derive(Parser, Debug)]
 #[command(name = "BlackMap")]
-#[command(author, version = "5.2.0")]
+#[command(author, version = "5.1.0")]
 #[command(about = "Fast, stealthy network reconnaissance framework with native fingerprint detection", long_about = None)]
 pub struct Args {
     #[command(subcommand)]
@@ -58,6 +58,34 @@ pub enum Commands {
         /// Rate limit (packets per second)
         #[arg(long, value_name = "PPS")]
         rate_limit: Option<u32>,
+
+        /// Enable adaptive rate control (auto-adjust based on packet loss/latency)
+        #[arg(long)]
+        adaptive_rate: bool,
+
+        /// Minimum packets per second (used with --adaptive-rate or manual rate)
+        #[arg(long, value_name = "PPS")]
+        min_rate: Option<u32>,
+
+        /// Maximum packets per second (used with --adaptive-rate or manual rate)
+        #[arg(long, value_name = "PPS")]
+        max_rate: Option<u32>,
+
+        /// Global scan duration in seconds (default 15)
+        #[arg(long, value_name = "SECS", default_value = "15")]
+        scan_duration: u64,
+
+        /// Enable OS version estimation (requires -O)
+        #[arg(long)]
+        os_version: bool,
+
+        /// Ultra-fast raw packet scan; skips service/os detection
+        #[arg(long)]
+        ultra: bool,
+
+        /// Internet-scale pseudo-random scan (ZMap style)
+        #[arg(long)]
+        internet_scan: bool,
 
         /// Output file
         #[arg(short = 'o', long)]

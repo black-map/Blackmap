@@ -20,6 +20,12 @@ BINDIR = .
 RUSTDIR = rust
 RUST_TARGET = $(RUSTDIR)/target/release/libblackmap_rust.a
 
+# CLI project location and binary paths
+CLI_DIR = cli
+# workspace uses a shared target directory at root
+CLI_DEBUG_BIN = target/debug/cli
+CLI_RELEASE_BIN = target/release/cli
+
 SOURCES = $(shell find $(SRCDIR) -name "*.c")
 OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 HEADERS = $(shell find include -name "*.h")
@@ -28,7 +34,20 @@ TARGET = blackmap
 
 .PHONY: all clean install uninstall help debug rust
 
-all: rust $(TARGET)
+# Default build: compile CLI debug binary and then the C core (library) for completeness.
+all: cli-debug rust $(TARGET)
+
+# Build CLI in debug mode and copy resulting executable to workspace root
+cli-debug:
+	cd $(CLI_DIR) && cargo build
+	@cp -f $(CLI_DEBUG_BIN) $(BINDIR)/blackmap
+	@echo "[+] Updated root binary with CLI (debug)"
+
+# Build CLI release binary and copy
+cli-release:
+	cd $(CLI_DIR) && cargo build --release
+	@cp -f $(CLI_RELEASE_BIN) $(BINDIR)/blackmap
+	@echo "[+] Updated root binary with CLI (release)"
 
 rust: $(RUST_TARGET)
 
@@ -36,13 +55,15 @@ $(RUST_TARGET): $(RUSTDIR)/src/lib.rs $(RUSTDIR)/Cargo.toml
 	cd $(RUSTDIR) && cargo build --release
 
 debug: CFLAGS += -g -O0 -DDEBUG
-debug: rust $(TARGET)
+debug: rust cli-debug $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "[+] Build successful: $(TARGET)"
 	@ls -lh $(TARGET)
+	# After building core, ensure CLI binary is still in place
+	@if [ -f $(CLI_DEBUG_BIN) ]; then cp -f $(CLI_DEBUG_BIN) $(BINDIR)/blackmap; fi
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c $(HEADERS)
 	@mkdir -p $(dir $@)

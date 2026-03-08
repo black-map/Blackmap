@@ -146,21 +146,62 @@ fn format_xml(result: &ScanResult) -> String {
     output.push_str("<scan>\n");
     output.push_str(&format!("  <start>{}</start>\n", result.start_time));
     output.push_str(&format!("  <end>{}</end>\n", result.end_time));
+    
+    output.push_str("  <statistics>\n");
+    output.push_str(&format!("    <total_hosts>{}</total_hosts>\n", result.stats.total_hosts));
+    output.push_str(&format!("    <hosts_up>{}</hosts_up>\n", result.stats.hosts_up));
+    output.push_str(&format!("    <open_ports>{}</open_ports>\n", result.stats.open_ports));
+    output.push_str("  </statistics>\n");
+
+    for host in &result.hosts {
+        output.push_str("  <host>\n");
+        output.push_str(&format!("    <address>{}</address>\n", host.host));
+        output.push_str(&format!("    <status is_up=\"{}\" />\n", host.is_up));
+        
+        if let Some(os) = &host.os {
+            output.push_str(&format!("    <os>{}</os>\n", os));
+        }
+
+        if !host.ports.is_empty() {
+            output.push_str("    <ports>\n");
+            for port in &host.ports {
+                output.push_str(&format!("      <port num=\"{}\">\n", port.port));
+                output.push_str(&format!("        <state>{:?}</state>\n", port.state));
+                if let Some(service) = &port.service {
+                    output.push_str(&format!("        <service name=\"{}\" ", service));
+                    if let Some(version) = &port.version {
+                        output.push_str(&format!("version=\"{}\" ", version));
+                    }
+                    if let Some(conf) = port.confidence {
+                        output.push_str(&format!("confidence=\"{}\" ", conf));
+                    }
+                    output.push_str("/>\n");
+                }
+                output.push_str("      </port>\n");
+            }
+            output.push_str("    </ports>\n");
+        }
+        output.push_str("  </host>\n");
+    }
+    
     output.push_str("</scan>\n");
     output
 }
 
 fn format_csv(result: &ScanResult) -> String {
-    let mut output = String::from("host,port,state,service,version\n");
+    let mut output = String::from("host,os,port,state,service,version,confidence\n");
     for host in &result.hosts {
+        let os = host.os.as_deref().unwrap_or("unknown");
         for port in &host.ports {
             output.push_str(&format!(
-                "{},{},{:?},\"{}\",%{}\n",
+                "{},\"{}\",{},{:?},\"{}\",\"{}\",{}\n",
                 host.host,
+                os,
                 port.port,
                 port.state,
                 port.service.as_deref().unwrap_or("unknown"),
-                port.version.as_deref().unwrap_or("")
+                port.version.as_deref().unwrap_or(""),
+                port.confidence.unwrap_or(0)
             ));
         }
     }

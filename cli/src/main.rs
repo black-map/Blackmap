@@ -1,6 +1,6 @@
-//! BlackMap 5.2 CLI Application
+//! BlackMap 1.3 CLI Application
 //!
-//! Fast, stealthy network reconnaissance framework with native Nmap fingerprint detection
+//! Fast, stealthy network reconnaissance framework with native fingerprint detection
 //! 
 //! Usage examples:
 //!   blackmap -p 22,80,443 scanme.nmap.org
@@ -17,6 +17,181 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> blackmap::error::Result<()> {
+    // custom help text copied from legacy v1.2.0 output and updated
+    const HELP_TEXT: &str = r#"BlackMap 5.1.0 (https://github.com/Brian-Rojo/Blackmap)
+High‑Performance Network Reconnaissance Scanner
+
+Usage:
+  blackmap [Scan Type(s)] [Options] {target specification}
+
+TARGET SPECIFICATION:
+  Can pass hostnames, IP addresses, CIDR networks or ranges.
+  Examples:
+    blackmap scan scanme.example.com
+    blackmap scan 192.168.1.1
+    blackmap scan 192.168.1.0/24
+    blackmap scan 10.0.0.1-254
+    blackmap scan targets.txt
+
+  -iL <file>            Input list of targets from file
+  -iR <num hosts>       Scan random hosts
+  --exclude <hosts>     Exclude hosts from scan
+  --excludefile <file>  Exclude hosts listed in file
+
+
+HOST DISCOVERY:
+  -sn                   Ping scan only (disable port scanning)
+  -Pn                   Treat all hosts as online
+  -PE                   ICMP echo discovery
+  -PS[ports]            TCP SYN discovery
+  -PA[ports]            TCP ACK discovery
+  --traceroute          Trace network path to host
+  -n                    Disable DNS resolution
+  -R                    Always resolve DNS
+
+
+SCAN TECHNIQUES:
+  -sS                   TCP SYN scan (stealth)
+  -sT                   TCP connect scan
+  -sU                   UDP scan
+  -sA                   TCP ACK scan (firewall detection)
+  -sW                   TCP window scan
+  -sF                   FIN scan
+  -sX                   Xmas scan
+  -sN                   Null scan
+
+
+PORT SPECIFICATION AND SCAN ORDER:
+  -p <ports>            Scan specific ports
+                        Examples:
+                          -p22
+                          -p1-1000
+                          -p22,80,443
+                          -p1-65535
+  -p-                   Scan all 65535 ports
+  --top-ports <n>       Scan top N most common ports
+  --exclude-ports <p>   Exclude specified ports
+  -F                    Fast scan (top 100 ports)
+  -r                    Scan ports sequentially
+
+
+SERVICE AND VERSION DETECTION:
+  -sV                   Enable service version detection
+  --version-intensity <0-9>
+                        Set version detection intensity
+  --version-light       Light detection (faster)
+  --version-all         Aggressive detection
+  --version-trace       Show probes and responses
+
+
+OS DETECTION:
+  -O                    Enable OS detection
+  --osscan-limit        Limit OS detection to likely hosts
+  --osscan-guess        Aggressive OS guessing
+
+
+TIMING AND PERFORMANCE:
+  -T0                   Paranoid (very slow)
+  -T1                   Sneaky
+  -T2                   Polite
+  -T3                   Normal (default)
+  -T4                   Aggressive
+  -T5                   Insane (very fast)
+
+  --threads <num>       Set concurrent scan threads
+  --timeout <time>      Connection timeout
+  --retries <num>       Retries for failed probes
+  --min-rate <num>      Minimum packets per second
+  --max-rate <num>      Maximum packets per second
+
+
+STEALTH AND EVASION:
+  --stealth <level>     Set stealth level (0‑5)
+  -f                    Fragment packets
+  --mtu <size>          Custom MTU for fragmentation
+  -D <decoys>           Use decoy IP addresses
+  -S <IP>               Spoof source address
+  --source-port <port>  Use custom source port
+  --ttl <value>         Set packet TTL
+  --spoof-mac <mac>     Spoof MAC address
+
+
+OUTPUT OPTIONS:
+  -oN <file>            Output in normal format
+  -oX <file>            Output in XML format
+  -oJ <file>            Output in JSON format
+  -oA <basename>        Output in all major formats
+
+  -v                    Increase verbosity
+  -vv                   Very verbose output
+  -d                    Debug mode
+  --reason              Show reason for port state
+  --open                Show only open ports
+  --packet-trace        Display packets sent/received
+
+
+RECONNAISSANCE:
+  recon <target>        Automated reconnaissance pipeline
+
+  Performs:
+    - Port scanning
+    - Service detection
+    - OS detection
+    - Technology fingerprinting
+    - CVE lookup
+
+
+MISC:
+  -6                    Enable IPv6 scanning
+  --datadir <dir>       Custom data directory
+  --update-db           Update service fingerprint database
+  -V                    Print version information
+  -h                    Show this help menu
+
+
+EXAMPLES:
+
+  Basic scan
+    blackmap scan example.com
+
+  Scan top 1000 ports
+    blackmap scan example.com --top-ports 1000
+
+  Full port scan
+    blackmap scan example.com -p-
+
+  Service detection
+    blackmap scan example.com -sV
+
+  Aggressive scan
+    blackmap scan example.com -A
+
+  Network scan
+    blackmap scan 192.168.1.0/24
+
+  Recon mode
+    blackmap recon example.com
+
+
+For more information and documentation:
+https://github.com/Brian-Rojo/Blackmap
+"#;
+
+    let raw_args: Vec<String> = std::env::args().collect();
+    // if no arguments supplied, show global help
+    // also intercept -h/--help if not asking for a specific subcommand
+    let wants_help = raw_args.iter().any(|a| a == "-h" || a == "--help");
+    let subcommand = raw_args.get(1).map(String::as_str);
+    let handle_global_help = raw_args.len() == 1 || (wants_help && match subcommand {
+        Some("scan") | Some("subdomains") => false,
+        _ => true,
+    });
+
+    if handle_global_help {
+        println!("{}", HELP_TEXT);
+        return Ok(());
+    }
+
     let args = Args::parse();
 
     // Initialize logging
@@ -40,6 +215,13 @@ async fn main() -> blackmap::error::Result<()> {
             threads,
             timeout,
             rate_limit,
+            adaptive_rate,
+            min_rate,
+            max_rate,
+            scan_duration,
+            os_version,
+            ultra,
+            internet_scan,
             output,
             format,
             skip_discovery,
@@ -82,12 +264,36 @@ async fn main() -> blackmap::error::Result<()> {
             config.stealth_level = stealth;
             config.service_detection = service_version;
             config.os_detection = os_detection;
+            config.os_version_detection = os_version;
+            config.ultra_mode = ultra;
+            config.internet_scan = internet_scan;
             config.verbosity = args.verbose as u32;
             config.output_file = output;
             config.output_format = String::from(format);
             config.skip_discovery = skip_discovery;
             config.max_retries = max_retries;
             config.scan_type = ScanType::from(scan_type);
+
+            config.adaptive_rate = adaptive_rate;
+            config.min_rate = min_rate;
+            config.max_rate = max_rate;
+            config.max_duration = Some(Duration::from_secs(scan_duration));
+
+            if ultra {
+                // ultra mode overrides defaults to maximize raw packet rate
+                config.service_detection = false;
+                config.os_detection = false;
+                if config.rate_limit == 0 {
+                    config.rate_limit = 1_000_000;
+                }
+            }
+
+            if internet_scan {
+                // internet scan simply toggles random target generation later;
+                // features like service/os detection are disabled
+                config.os_detection = false;
+                config.service_detection = false;
+            }
 
             if paranoid {
                 config.stealth_level = 5;

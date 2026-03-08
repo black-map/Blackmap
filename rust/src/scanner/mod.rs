@@ -20,6 +20,7 @@ use modules::banner_grabbing::grab_banner;
 use modules::service_detection::ServiceDetector;
 use crate::cdn_detection::{detect_cdn, CdnProvider};
 use crate::waf_detection::{detect_waf, WafProvider};
+use rand::Rng;
 
 /// Scan result for a single port
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +137,10 @@ impl Scanner {
     /// Start scanning
     pub async fn scan(&self) -> Result<ScanResult> {
         let start_time = chrono::Utc::now();
+        let max_duration = self.config.max_duration.unwrap_or(Duration::from_secs(15));
+        let deadline = std::time::Instant::now() + max_duration;
+
+        // for elapsed reporting
         let start = std::time::Instant::now();
 
         // Initialize DNS resolver
@@ -143,18 +148,33 @@ impl Scanner {
 
         // Resolve all targets to IP addresses
         let mut all_ips = Vec::new();
-        for target in &self.config.targets {
-            match resolver.resolve(target).await {
-                Ok(resolved) => {
-                    tracing::info!(
-                        "Resolved {} to {} address(es)",
-                        target,
-                        resolved.addresses.len()
-                    );
-                    all_ips.extend(resolved.addresses);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to resolve {}: {}", target, e);
+        if self.config.internet_scan {
+            // Generate random IPs for internet scan
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            for _ in 0..1000 { // arbitrary number, can be configurable
+                let ip = IpAddr::V4(std::net::Ipv4Addr::new(
+                    rng.gen_range(1..255),
+                    rng.gen_range(0..255),
+                    rng.gen_range(0..255),
+                    rng.gen_range(0..255),
+                ));
+                all_ips.push(ip);
+            }
+        } else {
+            for target in &self.config.targets {
+                match resolver.resolve(target).await {
+                    Ok(resolved) => {
+                        tracing::info!(
+                            "Resolved {} to {} address(es)",
+                            target,
+                            resolved.addresses.len()
+                        );
+                        all_ips.extend(resolved.addresses);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to resolve {}: {}", target, e);
+                    }
                 }
             }
         }
@@ -201,8 +221,31 @@ impl Scanner {
                 self.config.rate_limit,
             );
             
-            if let Ok(open_ports) = engine.run().await {
-                for ip in all_ips.clone() {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if let Ok(run_result) = timeout(remaining, engine.run()).await {
+                    if let Ok(open_ports) = run_result {
+                        for ip in all_ips.clone() {
+                    if std::time::Instant::now() > deadline {
+                        tracing::warn!("Reached max duration during SYN scan");
+                        break;
+                    }
+
+                    // lightweight discovery for SYN branch as well
+                    let mut host_alive = self.config.skip_discovery;
+                    if !host_alive && !self.config.skip_discovery {
+                        for &probe_port in &[80u16, 443] {
+                            let addr = SocketAddr::new(ip, probe_port);
+                            if timeout(Duration::from_secs(2), TcpStream::connect(addr))
+                                .await
+                                .map(|r| r.is_ok())
+                                .unwrap_or(false)
+                            {
+                                host_alive = true;
+                                break;
+                            }
+                        }
+                    }
+
                     let mut host_result = HostScan {
                         host: ip.to_string(),
                         is_up: false,
@@ -218,6 +261,7 @@ impl Scanner {
                     for &p in &self.config.ports {
                         if my_open_ports.contains(&p) {
                             total_open += 1;
+                            host_alive = true;
                             
                             // For v5.1 architecture, service detections happen dynamically afterwards 
                             let mut service = None;
@@ -251,7 +295,7 @@ impl Scanner {
                         }
                     }
                     
-                    host_result.is_up = !my_open_ports.is_empty();
+                    host_result.is_up = host_alive || !my_open_ports.is_empty();
                     if host_result.is_up {
                         hosts_with_open_ports += 1;
                     }
@@ -262,109 +306,125 @@ impl Scanner {
                 tracing::error!("Stateless Raw Socket scanner failed. Root privileges are required.");
                 std::process::exit(1);
             }
+        }
         } else {
-            for ip in all_ips {
-            let mut host_result = HostScan {
-                host: ip.to_string(),
-                is_up: false,
-                ports: Vec::new(),
-                os: None,
-            };
+            let mut all_tasks = tokio::task::JoinSet::new();
+            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.concurrency as usize));
 
-            // Scan ports for this host
-            let mut join_set: JoinSet<PortScan> = JoinSet::new();
-            let timeout_duration = self.config.timeout;
-            let concurrency = self.config.concurrency as usize;
+            // Map IP to its initial HostScan config
+            let mut host_map: std::collections::HashMap<IpAddr, HostScan> = std::collections::HashMap::new();
 
-            for (idx, &port) in self.config.ports.iter().enumerate() {
-                // Manual concurrency limiting
-                if idx % concurrency == 0 && idx > 0 {
-                    // Let some tasks complete before spawning more
-                    while join_set.len() > concurrency / 2 {
-                        if let Some(result) = join_set.join_next().await {
-                            if let Ok(port_result) = result {
-                                match port_result.state {
-                                    PortState::Open => total_open += 1,
-                                    PortState::Closed => total_closed += 1,
-                                    PortState::Filtered => total_filtered += 1,
-                                    PortState::Unknown => {}
-                                }
-                                host_result.ports.push(port_result);
-                            }
-                        }
-                    }
-                }
-
-                let addr = SocketAddr::new(ip, port);
-                let max_retries = self.config.max_retries;
-                let do_service_detection = self.config.service_detection;
-                
-                // Rate limiting logic
-                let pps = self.config.rate_limit;
-                if pps > 0 {
-                    let delay_ns = 1_000_000_000 / pps as u64;
-                    tokio::time::sleep(Duration::from_nanos(delay_ns)).await;
-                }
-                
-                join_set.spawn(async move {
-                    Self::scan_port_static(addr, timeout_duration, max_retries, do_service_detection).await
+            for &ip in &all_ips {
+                host_map.insert(ip, HostScan {
+                    host: ip.to_string(),
+                    is_up: false,
+                    ports: Vec::new(),
+                    os: None,
                 });
             }
 
-            // Collect remaining results
-            while let Some(result) = join_set.join_next().await {
-                if let Ok(port_result) = result {
-                    match port_result.state {
-                        PortState::Open => total_open += 1,
-                        PortState::Closed => total_closed += 1,
-                        PortState::Filtered => total_filtered += 1,
-                        PortState::Unknown => {}
+            // Spawn all IP/Port combinations
+            let timeout_duration = self.config.timeout;
+            let max_retries = self.config.max_retries;
+            let do_service_detection = self.config.service_detection;
+            let rate_limit = self.config.rate_limit;
+            
+            for &ip in &all_ips {
+                for &port in &self.config.ports {
+                    if std::time::Instant::now() > deadline {
+                        break;
                     }
-                    host_result.ports.push(port_result);
-                }
-            }
 
-            // Check if host is up
-            host_result.is_up = host_result.ports.iter().any(|p| p.state == PortState::Open);
-            if host_result.is_up {
-                hosts_with_open_ports += 1;
-            }
-
-            // Perform OS Detection if enabled
-            if self.config.os_detection && host_result.is_up {
-                let mut os_detected = None;
-                
-                // Try executing a ping to get TTL as a proxy for OS Fingerprinting since raw sockets aren't used here 
-                if let Ok(output) = std::process::Command::new("ping")
-                    .args(&["-c", "1", "-W", "2", &ip.to_string()])
-                    .output()
-                {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        // Look for "ttl=" in the output
-                        for word in stdout.split_whitespace() {
-                            if word.starts_with("ttl=") || word.starts_with("TTL=") {
-                                // Extract only digits to avoid parsing errors from attached characters (e.g. "ttl=250 ")
-                                let ttl_str: String = word[4..].chars().filter(|c| c.is_digit(10)).collect();
-                                if let Ok(ttl) = ttl_str.parse::<u8>() {
-                                    let os_info = modules::os_detection::OsDetector::detect_from_heuristics(ttl, None);
-                                    os_detected = Some(os_info.description);
-                                    break;
-                                }
-                            }
+                    // Block loop until we can spawn to avoid creating millions of tasks in memory at once
+                    let permit = semaphore.clone().acquire_owned().await.unwrap();
+                    let addr = SocketAddr::new(ip, port);
+                     
+                    all_tasks.spawn(async move {
+                        if rate_limit > 0 {
+                            let delay_ns = 1_000_000_000 / rate_limit as u64;
+                            tokio::time::sleep(Duration::from_nanos(delay_ns)).await;
                         }
+                        let res = Self::scan_port_static(addr, timeout_duration, max_retries, do_service_detection).await;
+                        drop(permit);
+                        res
+                    });
+                }
+            }
+
+            // Collect all results
+            while let Some(result) = all_tasks.join_next().await {
+                 if let Ok(port_result) = result {
+                     match port_result.state {
+                         PortState::Open => total_open += 1,
+                         PortState::Closed => total_closed += 1,
+                         PortState::Filtered => total_filtered += 1,
+                         PortState::Unknown => {}
+                     }
+                     if let Some(host_entry) = host_map.get_mut(&port_result.ip) {
+                         if port_result.state != PortState::Unknown {
+                             host_entry.is_up = true;
+                         }
+                         host_entry.ports.push(port_result);
+                     }
+                 }
+            }
+
+            let mut all_tasks_os = tokio::task::JoinSet::new();
+            
+            // Perform OS Detection if enabled
+            for (ip, mut host_result) in host_map {
+                let mut needs_os = false;
+                if self.config.skip_discovery {
+                    host_result.is_up = true;
+                }
+                
+                if host_result.is_up {
+                    hosts_with_open_ports += 1;
+                    if self.config.os_detection {
+                        needs_os = true;
                     }
                 }
                 
-                if os_detected.is_none() {
-                    os_detected = Some("Unknown (Ping blocked or requires root)".to_string());
+                if needs_os {
+                    // Spawn OS detection for hosts that are UP
+                     all_tasks_os.spawn(async move {
+                         // OS detection logic via ICMP TTL heuristic
+                         let mut os_detected = None;
+                         if let Ok(output) = std::process::Command::new("ping")
+                             .args(&["-c", "1", "-W", "2", &ip.to_string()])
+                             .output()
+                         {
+                             if output.status.success() {
+                                 let stdout = String::from_utf8_lossy(&output.stdout);
+                                 for word in stdout.split_whitespace() {
+                                     if word.starts_with("ttl=") || word.starts_with("TTL=") {
+                                         let ttl_str: String = word[4..].chars().filter(|c| c.is_digit(10)).collect();
+                                         if let Ok(ttl) = ttl_str.parse::<u8>() {
+                                             let os_info = modules::os_detection::OsDetector::detect_from_heuristics(ttl, None);
+                                             os_detected = Some(os_info.description);
+                                             break;
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                         if os_detected.is_none() {
+                             os_detected = Some("Unknown (Ping blocked or requires root)".to_string());
+                         }
+                         host_result.os = os_detected;
+                         host_result
+                     });
+                } else {
+                    host_scans.push(host_result);
                 }
-                
-                host_result.os = os_detected;
             }
-
-            host_scans.push(host_result);
-        }
+            
+            // Collect OS detection results
+            while let Some(result) = all_tasks_os.join_next().await {
+                if let Ok(host_result) = result {
+                    host_scans.push(host_result);
+                }
+            }
         }
 
         let elapsed = start.elapsed();
@@ -395,18 +455,55 @@ impl Scanner {
 
     /// Scan a single port with timeout and retries (static version for spawn)
     async fn scan_port_static(addr: SocketAddr, timeout_dur: Duration, max_retries: u32, do_service_detection: bool) -> PortScan {
+        use tokio::net::TcpStream;
         let start = std::time::Instant::now();
         let mut attempts = 0;
         let mut final_state = PortState::Unknown;
         let mut response_time = None;
+        let mut service = None;
+        let mut version = None;
+        let mut confidence = None;
+        let mut cdn_result = None;
+        let mut waf_result = None;
 
         while attempts <= max_retries {
             attempts += 1;
             match timeout(timeout_dur, TcpStream::connect(addr)).await {
-                Ok(Ok(_stream)) => {
+                Ok(Ok(mut stream)) => {
                     tracing::debug!("Port {}/{} open", addr.ip(), addr.port());
                     final_state = PortState::Open;
                     response_time = Some(start.elapsed());
+
+                    // Service detection using probes
+                    if do_service_detection {
+                        if let Some(service_info) = crate::probes::detect_service(addr.port(), &mut stream).await {
+                            service = Some(service_info.service);
+                            version = service_info.version;
+                            confidence = Some(service_info.confidence as u8);
+                        }
+                    }
+
+                    // Fallback to default service
+                    if service.is_none() {
+                        service = Some(match addr.port() {
+                            20 | 21 => "ftp",
+                            22 => "ssh",
+                            23 => "telnet",
+                            25 | 465 | 587 => "smtp",
+                            53 => "domain",
+                            80 | 8080 => "http",
+                            110 | 995 => "pop3",
+                            143 | 993 => "imap",
+                            443 | 8443 => "https",
+                            445 => "microsoft-ds",
+                            3306 => "mysql",
+                            3389 => "ms-wbt-server",
+                            5432 => "postgresql",
+                            8000 => "http-alt",
+                            _ => "unknown",
+                        }.to_string());
+                    }
+
                     break;
                 }
                 Ok(Err(e)) => {
@@ -434,59 +531,6 @@ impl Scanner {
 
         if response_time.is_none() {
             response_time = Some(start.elapsed());
-        }
-
-        let mut service = None;
-        let mut version = None;
-        let mut confidence = None;
-        let mut cdn_result = None;
-        let mut waf_result = None;
-        
-        // If port is open and service detection is enabled, grab banner
-        if final_state == PortState::Open {
-             let default_service = match addr.port() {
-                 20 | 21 => "ftp",
-                 22 => "ssh",
-                 23 => "telnet",
-                 25 | 465 | 587 => "smtp",
-                 53 => "domain",
-                 80 | 8080 => "http",
-                 110 | 995 => "pop3",
-                 143 | 993 => "imap",
-                 443 | 8443 => "https",
-                 445 => "microsoft-ds",
-                 3306 => "mysql",
-                 3389 => "ms-wbt-server",
-                 5432 => "postgresql",
-                 8000 => "http-alt",
-                 _ => "unknown",
-             };
-             
-             service = Some(default_service.to_string());
-             
-             if do_service_detection {
-                 if let Some(banner_res) = grab_banner(&addr.ip(), addr.port()).await {
-                     if let Some(detected) = ServiceDetector::detect_from_banner(&banner_res.payload) {
-                         service = Some(detected.service.clone());
-                         version = detected.version;
-                         confidence = Some(detected.confidence);
-                     }
-                     
-                     // Deep Recon: CDN and WAF detection for HTTP/HTTPS
-                     let is_http = addr.port() == 80 || addr.port() == 443 || 
-                                   service.as_deref().unwrap_or("").to_uppercase() == "HTTP" ||
-                                   service.as_deref().unwrap_or("").to_uppercase() == "HTTPS";
-                                   
-                     if is_http {
-                         if let Some(cdn) = detect_cdn(&addr.ip().to_string(), &banner_res.payload) {
-                             cdn_result = Some(format!("{:?}", cdn)); // simplified string format
-                         }
-                         if let Some(waf) = detect_waf(&banner_res.payload) {
-                             waf_result = Some(format!("{:?}", waf));
-                         }
-                     }
-                 }
-             }
         }
 
         PortScan {
@@ -520,6 +564,7 @@ impl Scanner {
             }
         }
     }
+
 }
 
 #[cfg(test)]

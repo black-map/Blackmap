@@ -216,10 +216,42 @@ extern blackmap_config_t *g_config;
 /* Networking engine used by both discovery and scanning */
 extern network_engine_t *g_engine;
 
+/* Scan result structures */
+typedef struct {
+    uint32_t ip;
+    uint16_t port;
+    int state;
+    double response_time;
+    char *service;
+    char *version;
+} port_scan_t;
+
+typedef struct {
+    char *host;
+    int is_up;
+    port_scan_t *ports;
+    int num_ports;
+    char *os;
+} host_scan_t;
+
+typedef struct {
+    host_scan_t *hosts;
+    int num_hosts;
+    int total_hosts;
+    int hosts_up;
+    int total_ports;
+    int open_ports;
+    int closed_ports;
+    int filtered_ports;
+    time_t start_time;
+    time_t end_time;
+} scan_result_t;
+
 /* Core functions */
 int blackmap_init(void);
 int blackmap_run(void);
 void blackmap_cleanup(void);
+scan_result_t *blackmap_scan(blackmap_config_t *config);
 
 /* Target parsing */
 int parse_ipv4_target(const char *target, uint32_t *ip_start, uint32_t *ip_end);

@@ -9,6 +9,7 @@
 pub mod config;
 pub mod dns;
 pub mod scanner;
+pub mod probes;
 pub mod cdn_detection;
 pub mod waf_detection;
 pub mod subdomain_enum;
@@ -47,6 +48,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialization() {
-        assert_eq!(VERSION, "4.0.0");
+        assert_eq!(VERSION, "5.1.0");
     }
 }
