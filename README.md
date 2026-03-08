@@ -1,13 +1,13 @@
-# BlackMap 5.1.1 🚀
+# BlackMap 5.1.2 🚀
 
 [![Rust](https://img.shields.io/badge/Language-Rust-orange)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/Version-5.1.1-success)](#)
+[![Version](https://img.shields.io/badge/Version-5.1.2-success)](#)
 [![SYN Engine](https://img.shields.io/badge/SYN%20Engine-v2.0-brightgreen)](#)
 [![OS](https://img.shields.io/badge/OS-Linux%20%7C%20macOS-blue)](#)
 
 **A Fully Asynchronous, Masscan-comparable Network Reconnaissance Framework written in Rust.**
 
-BlackMap has evolved from a simple port scanner into a complete reconnaissance platform. Version 5.1.1 introduces a **completely redesigned TCP SYN scan engine (v2.0)** with full packet synthesis, proper state tracking, and guaranteed detection of open/closed/filtered ports. Combined with **native Nmap fingerprint detection engines** and **Advanced Application-Layer Service Probes** - all implemented natively in Rust. This release combines lightning-fast stateless raw sockets (Masscan-style) via `pnet`, deep reconnaissance features like CDN/WAF detection, Subdomain Enumeration, and comprehensive service fingerprinting with global connection pooling.
+BlackMap is a high-performance network reconnaissance and port scanning framework designed for speed and deep network visibility. Version 5.1.2 introduces significant improvements to functionality, scan transparency, detection capability and reporting to compete with modern scanners.
 
 ## 🌟 Key Features
 
@@ -18,14 +18,28 @@ BlackMap has evolved from a simple port scanner into a complete reconnaissance p
     - **Performance**: Scan 65,535 ports in < 2 seconds on local networks
     - **Rate limiting**: Adaptive windowed rate limiting for precise control
     - For detailed technical information, see [SYN_SCAN_ENGINE_v2.md](SYN_SCAN_ENGINE_v2.md)
-*   **Native Nmap Fingerprint Detection**: Three advanced detection engines implemented natively in Rust:
-    - **Service Database Engine**: O(1) TCP/UDP service lookups using native port mappings
-    - **Version Detection Engine**: Async service probes with pattern matching against nmap-service-probes database
-    - **OS Fingerprint Engine**: TCP stack profile analysis with multi-test scoring (SEQ, T1-T6) and 65%+ accuracy
-*   **Advanced Application-Layer Service Probes**: Deep protocol-specific payload validation and parsing for HTTP, SSH, MySQL, PostgreSQL, Redis, MongoDB, and Docker API.
-*   **Global Async Connection Pooling**: Highly scalable concurrency engine utilizing Tokio `JoinSet` and `Semaphore` to distribute tasks globally across massive CIDR ranges instead of bottlenecking per host.
-*   **Deep Reconnaissance (CDN & WAF)**: Automatically unmasks if a target is protected by Cloudflare, Akamai, Fastly, CloudFront, Imperva, or AWS WAF.
-*   **Subdomain Enumeration**: Built-in concurrent DNS brute-forcing to discover hidden infrastructure.
+*   **Native Service Detection**: Advanced banner grabbing and fingerprint matching for common services:
+    - **SSH, HTTP, HTTPS, FTP, MySQL, PostgreSQL, Redis, SMTP, DNS**
+    - **Failed detection reporting**: Explicit reasons for unrecognized services
+    - **Async service probes**: High-performance concurrent detection
+*   **OS Fingerprinting**: TCP/IP stack analysis using TTL, window size patterns, and TCP options
+    - **Multi-factor analysis**: Comprehensive OS identification
+    - **65%+ accuracy**: Competitive with industry standards
+    - **Failed detection reporting**: Clear reasons for unknown OSes
+*   **Multi-Method Host Discovery**: ICMP ping, TCP SYN ping, TCP ACK ping, ARP discovery
+    - **Local network ARP**: Efficient discovery on LAN segments
+    - **Response classification**: Clear reporting of discovery methods
+*   **Advanced Scanning Engine**:
+    - **Asynchronous scanning**: Tokio-powered concurrent operations
+    - **Adaptive timeouts**: Intelligent timeout adjustment
+    - **Retry attempts**: Configurable retry logic
+    - **Packet loss detection**: Network condition monitoring
+    - **Intelligent concurrency**: Dynamic thread management
+*   **Comprehensive Scan Statistics**:
+    - **Detailed metrics**: Hosts scanned, ports tested, packet statistics
+    - **Latency information**: Average and maximum response times
+    - **State reporting**: Open, closed, filtered port counts
+    - **Packet analysis**: Sent/received counts and loss percentages
 *   **Ultra Stealth & Evasion**: Granular dynamic stealth profiles ranging from Level 0 (Aggressive) to Level 5 (Paranoid), Native packet rate-limiting, Decoy IP spoofing, TCP Option Jitter, and Source Port randomization.
 *   **Multi-Format Output**: Get your results in Human-readable Tables, XML, JSON, or CSV formats natively mapped with comprehensive metadata.
 *   **Distributed Mode**: Native Master/Worker distributed cluster logic to deploy workers across subnets!
@@ -45,25 +59,76 @@ Refer to the [INSTALL.md](INSTALL.md) file for more granular info regarding comp
 
 ## ⚡ Usage Examples
 
-BlackMap 5.1 utilizes subcommands to organize its powerful features: `scan` and `subdomains`.
+BlackMap 5.1.2 provides comprehensive network reconnaissance with detailed reporting and modern scanning capabilities.
 
-### Port Scanning & Deep Recon
+### Basic Port Scanning
 
 ```bash
-# Basic scan prioritizing common ports on a single target
-blackmap scan example.com -p 22,80,443
+# Basic scan with service detection
+blackmap scan example.com -p 22,80,443 -V
 
 # Example Output:
 # PORT      STATE    SERVICE
-# 22/tcp    open     ssh
-# 80/tcp    open     http
-# 443/tcp   open     https
+# 22/tcp    open     ssh     OpenSSH 8.9
+# 80/tcp    open     http    nginx 1.22
+# 443/tcp   open     https   Apache 2.4
+```
 
-# Stateless Masscan-style Raw Socket sweeping across a massive subnet (requires root)
-sudo blackmap scan 10.0.0.0/8 -p 80,443 -s tcp-syn --rate-limit 100000
+### Advanced Service & OS Detection
 
-# Stealthy scan utilizing paranoid timing, decoy IPs, and source port randomization
-blackmap scan 192.168.1.0/24 -p- -O -V --paranoid --decoys 192.168.1.5,192.168.1.6 -S 53 -oJ results.json
+```bash
+# Full reconnaissance with service and OS detection
+blackmap scan 192.168.1.0/24 --service-detect --os-detect
+
+# Example Output:
+# Service detection:
+# 22/tcp   open  ssh   OpenSSH 8.9
+# 80/tcp   open  http  nginx 1.22
+# 443/tcp  open  https Apache 2.4
+# 8080/tcp open  unknown
+# Reason: banner not recognized
+#
+# OS detection:
+# 192.168.1.1   Linux kernel 5.x
+# 192.168.1.10  Windows 10/11
+# 192.168.1.15  UNKNOWN
+# Reason: insufficient fingerprint data
+```
+
+### High-Performance SYN Scanning
+
+```bash
+# Fast SYN scan with detailed statistics (requires root)
+sudo blackmap scan 10.0.0.0/24 -s tcp-syn --rate 10000
+
+# Example Output:
+# Scan statistics:
+# Hosts scanned: 256
+# Hosts up: 14
+# Total ports tested: 256000
+# Open ports: 38
+# Closed ports: 1200
+# Filtered ports: 254762
+# Packets sent: 520000
+# Packets received: 18400
+# Packet loss: 3.2%
+# Average latency: 24ms
+# Max latency: 92ms
+```
+
+### Stealth & Evasion Scanning
+
+```bash
+# Stealthy scan with custom timing and retries
+blackmap scan target.com --stealth 3 --retries 2 --timeout 3
+
+# Configuration Output:
+# Configuration:
+# Ports: 1000
+# Concurrency: 500 threads
+# Timeout: adaptive
+# Retries: 2
+# Rate limit: auto
 ```
 
 ### Subdomain Enumeration
@@ -72,6 +137,29 @@ blackmap scan 192.168.1.0/24 -p- -O -V --paranoid --decoys 192.168.1.5,192.168.1
 # Concurrently brute-force subdomains using 50 threads
 blackmap subdomains target-company.com -t 50
 ```
+
+## 🆕 New CLI Features in v5.1.2
+
+BlackMap 5.1.2 introduces comprehensive CLI options for advanced scanning:
+
+### Detection Options
+- `--service-detect` / `-V`: Enable service version detection
+- `--os-detect` / `-O`: Enable OS fingerprinting
+- `--version-intensity <0-9>`: Set detection intensity
+- `--version-light`: Fast detection mode
+- `--version-all`: Aggressive detection mode
+
+### Performance & Control
+- `--rate <pps>`: Set packets per second rate
+- `--retries <num>`: Number of retry attempts
+- `--timeout <secs>`: Custom timeout values
+- `--stealth <0-5>`: Stealth level (0=aggressive, 5=paranoid)
+
+### Output & Reporting
+- `-oJ <file>`: JSON output format
+- `-oX <file>`: XML output format
+- `--verbose`: Detailed logging
+- `--quiet`: Minimal output
 
 ### 🛡️ Stateless TCP SYN Evasion (Important)
 
