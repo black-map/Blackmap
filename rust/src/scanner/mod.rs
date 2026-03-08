@@ -16,10 +16,17 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio::task::JoinSet;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+
+pub mod packet_parser;
+pub mod port_state_tracker;
+pub mod syn_receiver;
+pub mod syn_sender;
+pub mod target_scheduler;
+
 use modules::banner_grabbing::grab_banner;
 use modules::service_detection::ServiceDetector;
-use crate::cdn_detection::{detect_cdn, CdnProvider};
-use crate::waf_detection::{detect_waf, WafProvider};
 use rand::Rng;
 
 /// Scan result for a single port
@@ -215,53 +222,81 @@ impl Scanner {
 
         if self.config.scan_type == ScanType::TcpSyn {
             tracing::info!("Engaging Stateless Raw Socket TCP-SYN Engine (Requires Root)...");
-            let engine = raw_scanner::StatelessScanner::new(
-                all_ips.clone(),
-                self.config.ports.clone(),
-                self.config.rate_limit,
-            );
             
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                if let Ok(run_result) = timeout(remaining, engine.run()).await {
-                    if let Ok(open_ports) = run_result {
-                        for ip in all_ips.clone() {
-                    if std::time::Instant::now() > deadline {
-                        tracing::warn!("Reached max duration during SYN scan");
-                        break;
+            // 1. Initialize Scheduler & Tracker
+            let scheduler = Arc::new(target_scheduler::TargetScheduler::new(all_ips.clone(), self.config.ports.clone()));
+            let tracker = Arc::new(port_state_tracker::PortStateTracker::new());
+            
+            // 2. Initialize Sender & Receiver
+            let sender = match syn_sender::SynSender::new(None) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Failed to initialize SYN Sender (Are you root?): {}", e);
+                    std::process::exit(1);
+                }
+            };
+            let receiver = match syn_receiver::SynReceiver::new(None) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!("Failed to initialize SYN Receiver (Are you root?): {}", e);
+                    std::process::exit(1);
+                }
+            };
+            
+            let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+            let tracker_clone = Arc::clone(&tracker);
+            
+            // 3. Spawn Receiver
+            let receiver_task = tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                rt.block_on(async {
+                    if let Err(e) = receiver.run(tracker_clone, shutdown_rx).await {
+                        tracing::error!("Receiver Error: {}", e);
                     }
-
-                    // lightweight discovery for SYN branch as well
-                    let mut host_alive = self.config.skip_discovery;
-                    if !host_alive && !self.config.skip_discovery {
-                        for &probe_port in &[80u16, 443] {
-                            let addr = SocketAddr::new(ip, probe_port);
-                            if timeout(Duration::from_secs(2), TcpStream::connect(addr))
-                                .await
-                                .map(|r| r.is_ok())
-                                .unwrap_or(false)
-                            {
-                                host_alive = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    let mut host_result = HostScan {
-                        host: ip.to_string(),
-                        is_up: false,
-                        ports: Vec::new(),
-                        os: None,
-                    };
+                });
+            });
+            
+            // 4. Run Sender
+            let timeout_secs = self.config.timeout.as_secs_f32().ceil() as u64;
+            if let Err(e) = sender.run(scheduler, Arc::clone(&tracker), self.config.rate_limit).await {
+                tracing::error!("Sender Error: {}", e);
+            }
+            
+            // 5. Wait for straggler SYN-ACKs (RTT delay)
+            tokio::time::sleep(std::time::Duration::from_millis(timeout_secs * 1000 + 500)).await;
+            
+            // 6. Signal shutdown and await
+            let _ = shutdown_tx.send(()).await;
+            let _ = receiver_task.await;
+            
+            tracker.finalize_timeouts(timeout_secs * 1000);
+            
+            // 7. Process Results into standard format
+            let results = tracker.get_results();
+            
+            for ip in all_ips.clone() {
+                let my_results: Vec<&(IpAddr, u16, PortState)> = results.iter().filter(|(r_ip, _, _)| *r_ip == ip).collect();
+                let my_open_ports: Vec<u16> = my_results.iter().filter(|(_, _, state)| *state == PortState::Open).map(|(_, p, _)| *p).collect();
+                
+                let mut host_alive = self.config.skip_discovery || !my_open_ports.is_empty();
+                
+                let mut host_result = HostScan {
+                    host: ip.to_string(),
+                    is_up: host_alive,
+                    ports: Vec::new(),
+                    os: None,
+                };
+                
+                for &p in &self.config.ports {
+                    // Try to extract exact recorded state 
+                    let recorded_state = my_results.iter()
+                           .find(|(_, r_p, _)| *r_p == p)
+                           .map(|(_, _, state)| *state)
+                           .unwrap_or(PortState::Filtered); // Timeout / Missed = Filtered
                     
-                    let my_open_ports: Vec<u16> = open_ports.iter()
-                        .filter(|op| op.ip == ip)
-                        .map(|op| op.port)
-                        .collect();
-                        
-                    for &p in &self.config.ports {
-                        if my_open_ports.contains(&p) {
+                    match recorded_state {
+                        PortState::Open => {
                             total_open += 1;
-                            host_alive = true;
                             
                             // For v5.1 architecture, service detections happen dynamically afterwards 
                             let mut service = None;
@@ -290,23 +325,17 @@ impl Scanner {
                                 cdn: None,
                                 waf: None,
                             });
-                        } else {
-                            total_filtered += 1;
-                        }
+                        },
+                        PortState::Closed => total_closed += 1,
+                        PortState::Filtered | PortState::Unknown => total_filtered += 1,
                     }
-                    
-                    host_result.is_up = host_alive || !my_open_ports.is_empty();
-                    if host_result.is_up {
-                        hosts_with_open_ports += 1;
-                    }
-                    
-                    host_scans.push(host_result);
                 }
-            } else {
-                tracing::error!("Stateless Raw Socket scanner failed. Root privileges are required.");
-                std::process::exit(1);
+                
+                if host_alive {
+                    hosts_with_open_ports += 1;
+                }
+                host_scans.push(host_result);
             }
-        }
         } else {
             let mut all_tasks = tokio::task::JoinSet::new();
             let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.concurrency as usize));

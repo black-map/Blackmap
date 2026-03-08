@@ -66,6 +66,17 @@ blackmap scan 192.168.1.0/24 -p- -O -V --paranoid --decoys 192.168.1.5,192.168.1
 blackmap subdomains target-company.com -t 50
 ```
 
+### 🛡️ Stateless TCP SYN Evasion (Important)
+
+When running the ultra-fast Stateless TCP SYN engine (`--scan-type tcp-syn`), Blackmap uses raw sockets to bypass the Linux connection tracker. Because the kernel doesn't know about these connections, if a target replies with a `SYN-ACK`, your kernel will automatically reply with a `RST` packet, closing the connection. 
+
+While this still safely identifies the port as open, it creates noise. To completely evade detection and stop your kernel from interfering, apply this temporary `iptables` rule before scanning:
+
+```bash
+# Drop outgoing RST packets to let BlackMap handle state silently
+sudo iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP
+```
+
 ### Distributed Scan Architecture (Clustering)
 
 ```bash

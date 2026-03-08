@@ -24,6 +24,12 @@
 - Transitioned from blocking sequential local host iteration to a globally distributed `JoinSet` bounded by a strict `tokio::sync::Semaphore`.
 - Massive CIDR operations seamlessly maximize rate limits and global connection capacity without host timeouts bottlenecking discovery.
 
+#### High-Performance Stateless TCP SYN Engine
+- Completely re-architected the `raw_scanner` module utilizing the `pnet` asynchronous framework.
+- Built a modular pipeline (`syn_sender.rs`, `syn_receiver.rs`, `packet_parser.rs`) to construct, fire, and asynchronously intercept raw TCP layers at wire speed.
+- Implemented smart state tracking mapping raw network responses (`SYN-ACK`, `RST`) back to high-level `open`/`closed` port flags while automatically managing timeouts.
+- Designed dynamic IP/Port pseudo-random load schedulers to actively mitigate IDS/IPS alerting when saturating the wire.
+
 #### Technical Improvements
 - Zero external dependencies - all engines implemented natively in Rust
 - Async/await architecture for unlimited concurrency
