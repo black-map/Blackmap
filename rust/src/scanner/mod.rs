@@ -546,12 +546,31 @@ impl Scanner {
                             confidence = Some(service_info.confidence as u8);
                             
                             // INTEGRATION: CVE Detection - match detected service/version against CVE database
-                            if let Ok(vuln_engine) = VulnerabilityEngine::load_from_file("data/cve_db.json") {
-                                if let Some(ver) = &service_info.version {
-                                    if let Some(vuln_match) = vuln_engine.check_vulnerabilities(&service_info.service, ver) {
-                                        cves = Some(vuln_match.cves);
-                                        cve_confidence = Some(vuln_match.confidence as u8);
+                            // Extract clean version (remove title and other info)
+                            let clean_version = if let Some(ref v) = version {
+                                // Extract version before parentheses: "2.4.38 (Title: ...)" -> "2.4.38"
+                                v.split('(').next().unwrap_or("").trim().to_string()
+                            } else {
+                                String::new()
+                            };
+                            
+                            // Try multiple possible paths for the CVE database
+                            let cve_paths = vec![
+                                "data/cve_db.json",
+                                "./data/cve_db.json",
+                                "/home/mayer/Escritorio/Blackmap/data/cve_db.json",
+                            ];
+                            
+                            for cve_path in cve_paths {
+                                if let Ok(vuln_engine) = VulnerabilityEngine::load_from_file(cve_path) {
+                                    if !clean_version.is_empty() {
+                                        if let Some(vuln_match) = vuln_engine.check_vulnerabilities(&service_info.service, &clean_version) {
+                                            cves = Some(vuln_match.cves);
+                                            cve_confidence = Some(vuln_match.confidence as u8);
+                                            break; // Found and loaded successfully
+                                        }
                                     }
+                                    break; // Database loaded, don't try other paths
                                 }
                             }
                         }

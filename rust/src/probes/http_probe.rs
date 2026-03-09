@@ -41,7 +41,9 @@ pub fn parse_http_response(buffer: &[u8]) -> Option<ServiceInfo> {
         return None;
     }
 
-    let mut version = None;
+    let mut version_for_cve = None; // INTEGRATION: Clean version for CVE matching
+    let mut version_for_display = None; // Display version with title
+    let mut server_name = "http".to_string(); // INTEGRATION: Track actual server name for CVE matching
     let mut title = None;
 
     // Split headers and body
@@ -53,7 +55,19 @@ pub fn parse_http_response(buffer: &[u8]) -> Option<ServiceInfo> {
     for line in headers.lines() {
         if line.to_lowercase().starts_with("server:") {
             let server_val = line[7..].trim();
-            version = parse_server_header(server_val);
+            
+            // INTEGRATION: Extract actual server name for CVE database matching
+            if server_val.to_lowercase().starts_with("apache") {
+                server_name = "apache".to_string();
+            } else if server_val.to_lowercase().starts_with("nginx") {
+                server_name = "nginx".to_string();
+            } else if server_val.to_lowercase().contains("microsoft-iis") {
+                server_name = "iis".to_string();
+            } else if server_val.to_lowercase().contains("lighttpd") {
+                server_name = "lighttpd".to_string();
+            }
+            
+            version_for_cve = parse_server_header(server_val);
             break;
         }
     }
@@ -63,50 +77,56 @@ pub fn parse_http_response(buffer: &[u8]) -> Option<ServiceInfo> {
         title = Some(t);
     }
 
-    // Compose final version string
-    let mut final_version = version;
+    // Compose display version with title (for human-readable output)
+    version_for_display = version_for_cve.clone();
     if let Some(t) = title {
-        if let Some(v) = final_version {
-            final_version = Some(format!("{} (Title: {})", v, t));
+        if let Some(v) = version_for_display {
+            version_for_display = Some(format!("{} (Title: {})", v, t));
         } else {
-            final_version = Some(format!("(Title: {})", t));
+            version_for_display = Some(format!("(Title: {})", t));
         }
     }
 
     Some(ServiceInfo {
-        service: "http".to_string(),
-        version: final_version,
+        service: server_name, // INTEGRATION: Use extracted server name instead of hardcoded "http"
+        version: version_for_display, // Use display version (with title) for output, but CVE matching will use clean version
         confidence: 85,
     })
 }
 
 fn parse_server_header(server: &str) -> Option<String> {
     let lower = server.to_lowercase();
+    // INTEGRATION: Extract only version numbers (for CVE database matching)
+    // Instead of "Apache 2.4.38", return just "2.4.38" so CVE engine can match
     if lower.contains("nginx") {
         if let Some(start) = lower.find("nginx/") {
             let ver = &server[start + 6..];
-            Some(format!("nginx {}", ver.split_whitespace().next().unwrap_or(ver)))
+            let version_only = ver.split_whitespace().next().unwrap_or(ver);
+            Some(version_only.to_string())
         } else {
             Some("nginx".to_string())
         }
     } else if lower.contains("apache") {
         if let Some(start) = lower.find("apache/") {
             let ver = &server[start + 7..];
-            Some(format!("Apache {}", ver.split_whitespace().next().unwrap_or(ver)))
+            let version_only = ver.split_whitespace().next().unwrap_or(ver);
+            Some(version_only.to_string())
         } else {
             Some("Apache".to_string())
         }
     } else if lower.contains("microsoft-iis") {
         if let Some(start) = lower.find("microsoft-iis/") {
             let ver = &server[start + 14..];
-            Some(format!("IIS {}", ver.split_whitespace().next().unwrap_or(ver)))
+            let version_only = ver.split_whitespace().next().unwrap_or(ver);
+            Some(version_only.to_string())
         } else {
             Some("Microsoft IIS".to_string())
         }
     } else if lower.contains("lighttpd") {
         if let Some(start) = lower.find("lighttpd/") {
             let ver = &server[start + 9..];
-            Some(format!("lighttpd {}", ver.split_whitespace().next().unwrap_or(ver)))
+            let version_only = ver.split_whitespace().next().unwrap_or(ver);
+            Some(version_only.to_string())
         } else {
             Some("lighttpd".to_string())
         }
