@@ -22,7 +22,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> blackmap::error::Result<()> {
     // custom help text copied from legacy v1.2.0 output and updated
-    const HELP_TEXT: &str = r#"BlackMap Ultimate 6.1.0 (https://github.com/Brian-Rojo/Blackmap)
+    const HELP_TEXT: &str = r#"BlackMap Ultimate 6.3.0 (https://github.com/Brian-Rojo/Blackmap)
 High‑Performance Network Reconnaissance Scanner
 
 Usage:
@@ -354,7 +354,7 @@ https://github.com/Brian-Rojo/Blackmap
                 }
             }
 
-            println!("BlackMap Ultimate 6.1.0 - Fast network reconnaissance framework");
+            println!("BlackMap Ultimate 6.3.0 - Fast network reconnaissance framework");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
 
             // Distributed Mode Check
@@ -437,7 +437,7 @@ https://github.com/Brian-Rojo/Blackmap
         }
         
         Commands::Subdomains { domain, threads } => {
-            println!("BlackMap Ultimate 6.1.0 - Subdomain Enumeration");
+            println!("BlackMap Ultimate 6.3.0 - Subdomain Enumeration");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target: {}", domain);
             println!("[+] Threads: {}", threads);
@@ -474,7 +474,7 @@ https://github.com/Brian-Rojo/Blackmap
             format: _web_format,
             output: _web_output,
         } => {
-            println!("BlackMap Ultimate 6.1.0 - Web Technology Detection");
+            println!("BlackMap Ultimate 6.3.0 - Web Technology Detection");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target: {}", target);
             println!("[+] Scanning for web technologies...\n");
@@ -524,7 +524,7 @@ https://github.com/Brian-Rojo/Blackmap
             format: _dns_format,
             output: _dns_output,
         } => {
-            println!("BlackMap Ultimate 6.1.0 - DNS Reconnaissance");
+            println!("BlackMap Ultimate 6.3.0 - DNS Reconnaissance");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target domain: {}", domain);
             println!("[+] Threads: {}", threads);
