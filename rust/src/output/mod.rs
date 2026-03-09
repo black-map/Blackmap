@@ -63,8 +63,14 @@ fn format_table(result: &ScanResult) -> String {
         
         if host.is_up || has_open_ports {
             output.push_str(&format!("Target: {} is UP\n", host.host));
+            
+            // INTEGRATION: Display OS Detection with confidence
             if let Some(os) = &host.os {
-                output.push_str(&format!("OS Detected: {}\n", os));
+                if let Some(conf) = host.os_confidence {
+                    output.push_str(&format!("OS Detected: {} ({}% confidence)\n", os, conf));
+                } else {
+                    output.push_str(&format!("OS Detected: {}\n", os));
+                }
             }
             
             let has_open_ports = host.ports.iter().any(|p| p.state == crate::scanner::PortState::Open);
@@ -90,6 +96,14 @@ fn format_table(result: &ScanResult) -> String {
                         }
                         if let Some(waf) = &port.waf {
                             extras.push_str(&format!("[WAF: {}] ", waf));
+                        }
+                        
+                        // INTEGRATION: Display CVEs if detected
+                        if let Some(cves) = &port.cves {
+                            if !cves.is_empty() {
+                                let cve_list = cves.join(", ");
+                                extras.push_str(&format!("[CVEs: {}] ", cve_list));
+                            }
                         }
                         
                         let port_str = format!("{}/tcp", port.port);

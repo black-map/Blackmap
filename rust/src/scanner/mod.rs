@@ -27,6 +27,8 @@ pub mod target_scheduler;
 
 use modules::banner_grabbing::grab_banner;
 use modules::service_detection::ServiceDetector;
+use crate::vulnerability_engine::VulnerabilityEngine;
+use crate::os_fingerprinter_new::OSFingerprinter;
 use rand::Rng;
 
 /// Scan result for a single port
@@ -58,6 +60,12 @@ pub struct PortScan {
 
     /// Detected WAF provider
     pub waf: Option<String>,
+
+    /// Detected CVEs for this service version (if any)
+    pub cves: Option<Vec<String>>,
+
+    /// CVE detection confidence (0-100)
+    pub cve_confidence: Option<u8>,
 }
 
 /// Overall scan result for all hosts
@@ -90,6 +98,9 @@ pub struct HostScan {
 
     /// Operating system (if detected)
     pub os: Option<String>,
+
+    /// OS detection confidence (0-100)
+    pub os_confidence: Option<u8>,
 }
 
 /// Scan statistics
@@ -285,6 +296,7 @@ impl Scanner {
                     is_up: host_alive,
                     ports: Vec::new(),
                     os: None,
+                    os_confidence: None,
                 };
                 
                 for &p in &self.config.ports {
@@ -302,14 +314,26 @@ impl Scanner {
                             let mut service = None;
                             let mut version = None;
                             let mut confidence = None;
+                            let mut cves = None;
+                            let mut cve_confidence = None;
                             
                             if self.config.service_detection {
                                 // Dynamic banner grabbing
                                 if let Ok(Some(banner)) = timeout(Duration::from_secs(2), grab_banner(&ip, p)).await {
                                     if let Some(detected) = ServiceDetector::detect_from_banner(&banner.payload) {
-                                        service = Some(detected.service);
-                                        version = detected.version;
+                                        service = Some(detected.service.clone());
+                                        version = detected.version.clone();
                                         confidence = Some(detected.confidence);
+                                        
+                                        // INTEGRATION: Check for CVEs based on service/version
+                                        if let Ok(vuln_engine) = VulnerabilityEngine::load_from_file("data/cve_db.json") {
+                                            if let Some(ver) = &detected.version {
+                                                if let Some(vuln_match) = vuln_engine.check_vulnerabilities(&detected.service, ver) {
+                                                    cves = Some(vuln_match.cves);
+                                                    cve_confidence = Some(vuln_match.confidence as u8);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -324,6 +348,8 @@ impl Scanner {
                                 confidence,
                                 cdn: None,
                                 waf: None,
+                                cves,
+                                cve_confidence,
                             });
                         },
                         PortState::Closed => total_closed += 1,
@@ -334,6 +360,12 @@ impl Scanner {
                 if host_alive {
                     hosts_with_open_ports += 1;
                 }
+                
+                // INTEGRATION: OS Fingerprinting - analyze all port data for OS detection
+                let (detected_os, os_conf) = Self::fingerprint_host_os(&host_result.ports);
+                host_result.os = detected_os;
+                host_result.os_confidence = os_conf;
+                
                 host_scans.push(host_result);
             }
         } else {
@@ -349,6 +381,7 @@ impl Scanner {
                     is_up: false,
                     ports: Vec::new(),
                     os: None,
+                    os_confidence: None,
                 });
             }
 
@@ -494,6 +527,8 @@ impl Scanner {
         let mut confidence = None;
         let mut cdn_result = None;
         let mut waf_result = None;
+        let mut cves = None;
+        let mut cve_confidence = None;
 
         while attempts <= max_retries {
             attempts += 1;
@@ -506,9 +541,19 @@ impl Scanner {
                     // Service detection using probes
                     if do_service_detection {
                         if let Some(service_info) = crate::probes::detect_service(addr.port(), &mut stream).await {
-                            service = Some(service_info.service);
-                            version = service_info.version;
+                            service = Some(service_info.service.clone());
+                            version = service_info.version.clone();
                             confidence = Some(service_info.confidence as u8);
+                            
+                            // INTEGRATION: CVE Detection - match detected service/version against CVE database
+                            if let Ok(vuln_engine) = VulnerabilityEngine::load_from_file("data/cve_db.json") {
+                                if let Some(ver) = &service_info.version {
+                                    if let Some(vuln_match) = vuln_engine.check_vulnerabilities(&service_info.service, ver) {
+                                        cves = Some(vuln_match.cves);
+                                        cve_confidence = Some(vuln_match.confidence as u8);
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -572,6 +617,8 @@ impl Scanner {
             confidence,
             cdn: cdn_result,
             waf: waf_result,
+            cves,
+            cve_confidence,
         }
     }
 
@@ -592,6 +639,48 @@ impl Scanner {
                 Ok(PortState::Filtered)
             }
         }
+    }
+
+    /// INTEGRATION: OS Fingerprinting - analyzes port scanning results to detect OS
+    /// Uses multiple signals: service banners, port patterns
+    fn fingerprint_host_os(ports: &[PortScan]) -> (Option<String>, Option<u8>) {
+        // Collect service information from open ports
+        let mut service_banners = Vec::new();
+        
+        for port in ports {
+            if port.state == PortState::Open {
+                if let Some(service) = &port.service {
+                    if let Some(version) = &port.version {
+                        service_banners.push(version.as_str());
+                    }
+                }
+            }
+        }
+        
+        // Try to detect OS from service signatures
+        if !service_banners.is_empty() {
+            for banner in &service_banners {
+                if let Some((os, conf)) = OSFingerprinter::service_analysis("", banner) {
+                    return (Some(os), Some(conf as u8));
+                }
+            }
+        }
+        
+        // Fallback: Try to guess from common port patterns
+        let has_ssh = ports.iter().any(|p| p.port == 22 && p.state == PortState::Open);
+        let has_http = ports.iter().any(|p| (p.port == 80 || p.port == 8080) && p.state == PortState::Open);
+        let has_rdp = ports.iter().any(|p| p.port == 3389 && p.state == PortState::Open);
+        let has_smb = ports.iter().any(|p| p.port == 445 && p.state == PortState::Open);
+        
+        if has_rdp || has_smb {
+            return (Some("Windows (Port pattern detection)".to_string()), Some(70));
+        }
+        
+        if has_ssh && has_http {
+            return (Some("Linux/Unix (Port pattern detection)".to_string()), Some(65));
+        }
+        
+        (Some("Unknown (Insufficient fingerprint data)".to_string()), Some(0))
     }
 
 }

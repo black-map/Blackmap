@@ -1,0 +1,51 @@
+{
+  "hosts": [
+    {
+      "host": "170.210.104.16",
+      "is_up": true,
+      "os": "Detected via base TTL heuristics (TTL 250)",
+      "ports": [
+        {
+          "cdn": null,
+          "confidence": null,
+          "ip": "170.210.104.16",
+          "port": 443,
+          "response_time": {
+            "nanos": 19302636,
+            "secs": 0
+          },
+          "service": "https",
+          "state": "Open",
+          "version": null,
+          "waf": null
+        },
+        {
+          "cdn": null,
+          "confidence": 85,
+          "ip": "170.210.104.16",
+          "port": 80,
+          "response_time": {
+            "nanos": 21927898,
+            "secs": 0
+          },
+          "service": "http",
+          "state": "Open",
+          "version": "Apache 2.4.38 (Title: 403 Forbidden)",
+          "waf": null
+        }
+      ]
+    }
+  ],
+  "scan_time": {
+    "end": "2026-03-09T04:36:33.250001215Z",
+    "start": "2026-03-09T04:36:32.998690207Z"
+  },
+  "statistics": {
+    "closed_ports": 0,
+    "filtered_ports": 0,
+    "hosts_up": 1,
+    "open_ports": 2,
+    "total_hosts": 1,
+    "total_ports": 2
+  }
+}
