@@ -5,6 +5,9 @@ pub mod postgres_probe;
 pub mod redis_probe;
 pub mod docker_probe;
 pub mod mongodb_probe;
+pub mod ftp_probe;
+pub mod smtp_probe;
+pub mod imap_pop3_probe;
 
 use tokio::net::TcpStream;
 
@@ -30,6 +33,10 @@ pub enum ProbeDispatcher {
     Redis(redis_probe::RedisProbe),
     Docker(docker_probe::DockerProbe),
     Mongodb(mongodb_probe::MongodbProbe),
+    Ftp(ftp_probe::FtpProbe),
+    Smtp(smtp_probe::SmtpProbe),
+    Imap(imap_pop3_probe::ImapProbe),
+    Pop3(imap_pop3_probe::Pop3Probe),
 }
 
 impl ServiceProbe for ProbeDispatcher {
@@ -42,6 +49,10 @@ impl ServiceProbe for ProbeDispatcher {
             Self::Redis(p) => p.name(),
             Self::Docker(p) => p.name(),
             Self::Mongodb(p) => p.name(),
+            Self::Ftp(p) => p.name(),
+            Self::Smtp(p) => p.name(),
+            Self::Imap(p) => p.name(),
+            Self::Pop3(p) => p.name(),
         }
     }
 
@@ -54,6 +65,10 @@ impl ServiceProbe for ProbeDispatcher {
             Self::Redis(p) => p.ports(),
             Self::Docker(p) => p.ports(),
             Self::Mongodb(p) => p.ports(),
+            Self::Ftp(p) => p.ports(),
+            Self::Smtp(p) => p.ports(),
+            Self::Imap(p) => p.ports(),
+            Self::Pop3(p) => p.ports(),
         }
     }
 
@@ -66,6 +81,10 @@ impl ServiceProbe for ProbeDispatcher {
             Self::Redis(p) => p.probe(stream).await,
             Self::Docker(p) => p.probe(stream).await,
             Self::Mongodb(p) => p.probe(stream).await,
+            Self::Ftp(p) => p.probe(stream).await,
+            Self::Smtp(p) => p.probe(stream).await,
+            Self::Imap(p) => p.probe(stream).await,
+            Self::Pop3(p) => p.probe(stream).await,
         }
     }
 }
@@ -74,6 +93,10 @@ pub fn get_all_probes() -> Vec<ProbeDispatcher> {
     vec![
         ProbeDispatcher::Http(http_probe::HttpProbe),
         ProbeDispatcher::Ssh(ssh_probe::SshProbe),
+        ProbeDispatcher::Ftp(ftp_probe::FtpProbe),
+        ProbeDispatcher::Smtp(smtp_probe::SmtpProbe),
+        ProbeDispatcher::Imap(imap_pop3_probe::ImapProbe),
+        ProbeDispatcher::Pop3(imap_pop3_probe::Pop3Probe),
         ProbeDispatcher::Mysql(mysql_probe::MysqlProbe),
         ProbeDispatcher::Postgres(postgres_probe::PostgresProbe),
         ProbeDispatcher::Redis(redis_probe::RedisProbe),

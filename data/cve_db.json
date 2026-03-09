@@ -209,5 +209,19 @@
   {"service": "citrix", "version": "netscaler 14.1", "cpe": "cpe:/a:citrix:netscaler:14.1", "cves": ["CVE-2025-22467"]},
   
   {"service": "paloalto", "version": "pan-os 10.2", "cpe": "cpe:/o:paloaltonetworks:pan-os:10.2", "cves": ["CVE-2024-3383", "CVE-2024-5910"]},
-  {"service": "paloalto", "version": "pan-os 11.0", "cpe": "cpe:/o:paloaltonetworks:pan-os:11.0", "cves": ["CVE-2024-3383", "CVE-2024-5910", "CVE-2025-0111"]}
+  {"service": "paloalto", "version": "pan-os 11.0", "cpe": "cpe:/o:paloaltonetworks:pan-os:11.0", "cves": ["CVE-2024-3383", "CVE-2024-5910", "CVE-2025-0111"]},
+  
+  {"service": "Exim", "version": "4.99.1", "cpe": "cpe:/a:exim:exim:4.99.1", "cves": ["CVE-2024-39929"]},
+  {"service": "Exim", "version": "4.96", "cpe": "cpe:/a:exim:exim:4.96", "cves": ["CVE-2022-37451", "CVE-2023-42119"]},
+  {"service": "Exim", "version": "4.94", "cpe": "cpe:/a:exim:exim:4.94", "cves": ["CVE-2021-27216", "CVE-2022-37451"]},
+  {"service": "Exim", "version": "4.92", "cpe": "cpe:/a:exim:exim:4.92", "cves": ["CVE-2020-12783", "CVE-2020-28021", "CVE-2021-27216"]},
+  
+  {"service": "Dovecot", "version": "2.3.11", "cpe": "cpe:/a:dovecot:dovecot:2.3.11", "cves": ["CVE-2020-12100", "CVE-2019-11500"]},
+  {"service": "Dovecot", "version": "2.3.10", "cpe": "cpe:/a:dovecot:dovecot:2.3.10", "cves": ["CVE-2020-12100"]},
+  {"service": "Dovecot", "version": "2.3.0", "cpe": "cpe:/a:dovecot:dovecot:2.3.0", "cves": ["CVE-2019-11500", "CVE-2020-12100"]},
+  {"service": "Dovecot", "version": "2.2.36", "cpe": "cpe:/a:dovecot:dovecot:2.2.36", "cves": ["CVE-2017-14461"]},
+  
+  {"service": "Pure-FTPd", "version": "1.0.50", "cpe": "cpe:/a:pureftpd:pure-ftpd:1.0.50", "cves": ["CVE-2020-9274"]},
+  {"service": "Pure-FTPd", "version": "1.0.49", "cpe": "cpe:/a:pureftpd:pure-ftpd:1.0.49", "cves": ["CVE-2020-9274"]},
+  {"service": "Pure-FTPd", "version": "1.0.47", "cpe": "cpe:/a:pureftpd:pure-ftpd:1.0.47", "cves": ["CVE-2015-3969", "CVE-2019-14865"]}
 ]
