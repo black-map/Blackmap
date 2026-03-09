@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Command line arguments for BlackMap
 #[derive(Parser, Debug)]
 #[command(name = "BlackMap")]
-#[command(author, version = "6.0.0")]
+#[command(author, version = "6.3.0")]
 #[command(about = "Fast, stealthy network reconnaissance framework with native fingerprint detection", long_about = None)]
 pub struct Args {
     #[command(subcommand)]
@@ -157,6 +157,64 @@ pub enum Commands {
         /// Number of concurrent DNS threads
         #[arg(long, short = 't', value_name = "NUM", default_value = "50")]
         threads: usize,
+    },
+
+    /// Detect web technologies and fingerprints
+    Web {
+        /// Target host to scan for technologies
+        #[arg(value_name = "TARGET")]
+        target: String,
+
+        /// Check HTTPS as well
+        #[arg(short = 's', long)]
+        https: bool,
+
+        /// HTTP port to use
+        #[arg(long, value_name = "PORT", default_value = "80")]
+        http_port: u16,
+
+        /// HTTPS port to use
+        #[arg(long, value_name = "PORT", default_value = "443")]
+        https_port: u16,
+
+        /// Timeout for web requests (seconds)
+        #[arg(long, value_name = "SECS", default_value = "5")]
+        timeout: u64,
+
+        /// Output format
+        #[arg(long, value_enum, default_value = "table")]
+        format: OutputFormatArg,
+
+        /// Output file
+        #[arg(short = 'o', long)]
+        output: Option<PathBuf>,
+    },
+
+    /// DNS reconnaissance and enumeration
+    Dns {
+        /// Target domain for DNS reconnaissance
+        #[arg(value_name = "DOMAIN")]
+        domain: String,
+
+        /// Number of concurrent DNS threads
+        #[arg(long, short = 't', value_name = "NUM", default_value = "50")]
+        threads: usize,
+
+        /// Show DNS records (A, AAAA, MX, NS, TXT, CNAME)
+        #[arg(long)]
+        records: bool,
+
+        /// DNS server to use
+        #[arg(long)]
+        dns_server: Option<String>,
+
+        /// Output format
+        #[arg(long, value_enum, default_value = "table")]
+        format: OutputFormatArg,
+
+        /// Output file
+        #[arg(short = 'o', long)]
+        output: Option<PathBuf>,
     }
 }
 

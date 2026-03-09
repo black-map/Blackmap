@@ -1,26 +1,38 @@
-//! BlackMap 4.0 - Fast, Stealthy Network Reconnaissance Framework
+//! BlackMap Ultimate 6.3 - Fast, Stealthy Network Reconnaissance Framework with Real CVE Detection
 //! 
-//! A professional-grade network scanning tool written in Rust with minimal C FFI.
-//! Supports concurrent scanning, service detection, OS fingerprinting, and stealth techniques.
+//! Enterprise-grade network scanning with vulnerability detection, advanced fingerprinting,
+//! OS detection, web technology identification, and comprehensive reporting.
 
 #![warn(missing_docs)]
 
-// Core modules
+// Core scanning modules
 pub mod config;
 pub mod dns;
 pub mod scanner;
 pub mod probes;
+pub mod output;
+pub mod error;
+pub mod scheduler;
+pub mod plugin;
+pub mod ffi;
+pub mod distributed;
+
+// Service detection modules (v6.1+)
+pub mod banner_grabber;
+pub mod os_fingerprinter;
+pub mod web_detector;
+pub mod waf_detector;
+
+// Advanced detection modules (v6.3+)
+pub mod vulnerability_engine;
+pub mod protocol_probes;
+pub mod os_fingerprinter_new;
+pub mod json_formatter;
+
+// Legacy modules (compatibility)
 pub mod cdn_detection;
 pub mod waf_detection;
 pub mod subdomain_enum;
-pub mod output;
-
-// Additional modules
-pub mod scheduler;
-pub mod plugin;
-pub mod error;
-pub mod ffi;
-pub mod distributed;
 
 // Re-exports for convenience
 pub use config::ScanConfig;
@@ -28,9 +40,17 @@ pub use scanner::{Scanner, ScanResult};
 pub use dns::DnsResolver;
 pub use output::{OutputFormat, format_output};
 pub use error::Result;
+pub use banner_grabber::BannerGrabber;
+pub use os_fingerprinter::OSDetector;
+pub use web_detector::WebDetector;
+pub use waf_detector::WAFDetector;
+pub use vulnerability_engine::VulnerabilityEngine;
+pub use protocol_probes::ProtocolProbes;
+pub use os_fingerprinter_new::OSFingerprinter;
+pub use json_formatter::ScanResult as JSONScanResult;
 
-/// BlackMap version string
-pub const VERSION: &str = "6.0.0";
+/// BlackMap version: 6.3.0 with real CVE detection
+pub const VERSION: &str = "6.3.0";
 
 /// Initialize BlackMap runtime
 pub async fn init() -> Result<()> {

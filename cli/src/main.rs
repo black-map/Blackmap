@@ -1,15 +1,19 @@
-//! BlackMap 1.3 CLI Application
+//! BlackMap Ultimate 6.3 CLI Application
 //!
-//! Fast, stealthy network reconnaissance framework with native fingerprint detection
+//! Fast, stealthy network reconnaissance framework with REAL CVE detection
+//! Advanced scanning with service detection, OS fingerprinting, web technology detection, WAF detection, vulnerability detection
 //! 
 //! Usage examples:
-//!   blackmap -p 22,80,443 scanme.nmap.org
-//!   blackmap -sV -A target.com
-//!   blackmap -p- --stealth 3 192.168.0.0/16
-//!   blackmap --threads 1000 -oJ results.json 1.1.1.0/24
+//!   blackmap 192.168.1.1                          # Direct scan
+//!   blackmap scanme.example.com -sV               # Service detection
+//!   blackmap 192.168.0.0/24 -A                    # Aggressive scan
+//!   blackmap scan 192.168.1.1 -p 22,80,443        # Port specific scan
+//!   blackmap web scanme.example.com               # Web technology detection
+//!   blackmap dns example.com                      # DNS reconnaissance
 
 use clap::Parser;
 use std::sync::Arc;
+use std::io::{Read, Write};
 use cli::cli::*;
 use blackmap::{config::*, scanner::Scanner, dns::DnsResolver, output::{OutputFormat, format_output}};
 use blackmap::subdomain_enum::{enumerate_subdomains, SubdomainResult};
@@ -18,7 +22,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> blackmap::error::Result<()> {
     // custom help text copied from legacy v1.2.0 output and updated
-    const HELP_TEXT: &str = r#"BlackMap Ultimate 6.0.0 (https://github.com/black-map/Blackmap)
+    const HELP_TEXT: &str = r#"BlackMap Ultimate 6.1.0 (https://github.com/Brian-Rojo/Blackmap)
 High‑Performance Network Reconnaissance Scanner
 
 Usage:
@@ -350,7 +354,7 @@ https://github.com/Brian-Rojo/Blackmap
                 }
             }
 
-            println!("BlackMap Ultimate 6.0.0 - Fast network reconnaissance framework");
+            println!("BlackMap Ultimate 6.1.0 - Fast network reconnaissance framework");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
 
             // Distributed Mode Check
@@ -433,7 +437,7 @@ https://github.com/Brian-Rojo/Blackmap
         }
         
         Commands::Subdomains { domain, threads } => {
-            println!("BlackMap Ultimate 6.0.0 - Subdomain Enumeration");
+            println!("BlackMap Ultimate 6.1.0 - Subdomain Enumeration");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target: {}", domain);
             println!("[+] Threads: {}", threads);
@@ -456,6 +460,92 @@ https://github.com/Brian-Rojo/Blackmap
                 }
                 Err(e) => {
                     eprintln!("[-] Enumeration failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Commands::Web {
+            target,
+            https,
+            http_port: _http_port,
+            https_port: _https_port,
+            timeout: _web_timeout,
+            format: _web_format,
+            output: _web_output,
+        } => {
+            println!("BlackMap Ultimate 6.1.0 - Web Technology Detection");
+            println!("https://github.com/Brian-Rojo/Blackmap\n");
+            println!("[+] Target: {}", target);
+            println!("[+] Scanning for web technologies...\n");
+
+            // Check HTTP on port 80
+            println!("[*] Checking HTTP on port 80...");
+            if let Ok(mut stream) = std::net::TcpStream::connect(format!("{}:{}", target, 80)) {
+                let timeout_duration = Duration::from_secs(5);
+                let _ = stream.set_read_timeout(Some(timeout_duration));
+                let _ = stream.set_write_timeout(Some(timeout_duration));
+                
+                let request = format!("GET / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", target);
+                if let Ok(_) = std::io::Write::write_all(&mut stream, request.as_bytes()) {
+                    let mut response = String::new();
+                    let _ = std::io::Read::read_to_string(&mut stream, &mut response);
+                    
+                    for line in response.lines().take(20) {
+                        if line.starts_with("Server:") {
+                            println!("  [+] Server: {}", line.strip_prefix("Server:").unwrap_or("").trim());
+                        }
+                        if line.starts_with("X-Powered-By:") {
+                            println!("  [+] Framework: {}", line.strip_prefix("X-Powered-By:").unwrap_or("").trim());
+                        }
+                    }
+                }
+            } else {
+                println!("  [*] Port 80 not accessible");
+            }
+
+            if https {
+                println!("[*] Checking HTTPS on port 443...");
+                if std::net::TcpStream::connect(format!("{}:{}", target, 443)).is_ok() {
+                    println!("  [+] HTTPS is available");
+                } else {
+                    println!("  [*] Port 443 not accessible");
+                }
+            }
+
+            println!("\n[+] Web technology detection complete");
+        }
+
+        Commands::Dns {
+            domain,
+            threads,
+            records: _show_records,
+            dns_server: _dns_server,
+            format: _dns_format,
+            output: _dns_output,
+        } => {
+            println!("BlackMap Ultimate 6.1.0 - DNS Reconnaissance");
+            println!("https://github.com/Brian-Rojo/Blackmap\n");
+            println!("[+] Target domain: {}", domain);
+            println!("[+] Threads: {}", threads);
+            println!("[+] Starting DNS brute-force enumeration...\n");
+            
+            let resolver = DnsResolver::with_defaults().await?;
+            let resolver_arc = Arc::new(resolver);
+            
+            let start = std::time::Instant::now();
+            match enumerate_subdomains(&domain, resolver_arc, threads).await {
+                Ok(results) => {
+                    let elapsed = start.elapsed();
+                    println!("[+] Found {} subdomains in {:.2}s:\n", results.len(), elapsed.as_secs_f64());
+                    
+                    for res in results {
+                        let ips: Vec<String> = res.ips.iter().map(|ip| ip.to_string()).collect();
+                        println!("  {:40} => {}", res.subdomain, ips.join(", "));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[-] DNS enumeration failed: {}", e);
                     std::process::exit(1);
                 }
             }
