@@ -350,7 +350,7 @@ https://github.com/Brian-Rojo/Blackmap
                 }
             }
 
-            println!("BlackMap 5.1.2 - Fast network reconnaissance framework");
+            println!("BlackMap Ultimate 6.0.0 - Fast network reconnaissance framework");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
 
             // Distributed Mode Check
@@ -433,7 +433,7 @@ https://github.com/Brian-Rojo/Blackmap
         }
         
         Commands::Subdomains { domain, threads } => {
-            println!("BlackMap 5.1.2 - Subdomain Enumeration");
+            println!("BlackMap Ultimate 6.0.0 - Subdomain Enumeration");
             println!("https://github.com/Brian-Rojo/Blackmap\n");
             println!("[+] Target: {}", domain);
             println!("[+] Threads: {}", threads);
