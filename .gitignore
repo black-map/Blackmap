@@ -1,0 +1,22 @@
+# Compiled files
+blackmap
+blackscan
+blackscan_debug
+
+# Object files
+*.o
+*.a
+*.so
+
+# Output files
+*.txt
+*.log
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build files
+Makefile.bak
