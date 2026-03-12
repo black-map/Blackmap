@@ -883,16 +883,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (optind >= argc) {
-        fprintf(stderr, "Error: Target is required\n\n");
         usage(argv[0]);
-        return 1;
+        return 0;
     }
     strncpy(target, argv[optind], 255);
 
     if (port_str == NULL) {
-        fprintf(stderr, "Error: Ports are required\n\n");
-        usage(argv[0]);
-        return 1;
+        port_str = "22,80,443";
     }
 
     if (scan_type != SCAN_CONNECT && geteuid() != 0) {
